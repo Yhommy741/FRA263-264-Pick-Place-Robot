@@ -1,0 +1,6 @@
+../Core/Inc/Controller.h:96:21:Saturate	3
+../Core/Src/Controller.c:15:6:PID_Init	1
+../Core/Src/Controller.c:32:7:PID_Update	1
+../Core/Src/Controller.c:47:6:PID_Reset	1
+../Core/Src/Controller.c:76:6:FF_Init	1
+../Core/Src/Controller.c:82:7:FF_Compute	1

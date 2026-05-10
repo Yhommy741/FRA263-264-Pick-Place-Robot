@@ -1,0 +1,4 @@
+../Core/Src/MD20A.c:20:6:MD20A_init	1
+../Core/Src/MD20A.c:45:6:MD20A_setSpeed	5
+../Core/Src/MD20A.c:75:6:MD20A_stop	1
+../Core/Src/MD20A.c:85:6:MD20A_brake	1

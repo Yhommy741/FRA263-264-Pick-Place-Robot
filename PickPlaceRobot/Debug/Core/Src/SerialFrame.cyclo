@@ -1,0 +1,5 @@
+../Core/Src/SerialFrame.c:26:6:SerialFrame_Init	1
+../Core/Src/SerialFrame.c:57:5:SerialFrame_Add_TX	3
+../Core/Src/SerialFrame.c:85:5:SerialFrame_Add_RX	3
+../Core/Src/SerialFrame.c:116:6:SerialFrame_Transmit	3
+../Core/Src/SerialFrame.c:144:6:SerialFrame_Receive	5

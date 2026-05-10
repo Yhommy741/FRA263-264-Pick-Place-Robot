@@ -1,0 +1,5 @@
+../Core/Src/TrajectoryGen.c:15:6:Trajectory_Init	1
+../Core/Src/TrajectoryGen.c:36:6:Trajectory_SetTarget	2
+../Core/Src/TrajectoryGen.c:84:6:Trajectory_Update	3
+../Core/Src/TrajectoryGen.c:136:6:Trajectory_Stop	1
+../Core/Src/TrajectoryGen.c:147:6:Trajectory_Reset	1
