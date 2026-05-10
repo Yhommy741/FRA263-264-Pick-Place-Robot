@@ -4,12 +4,8 @@
  * @file    main.c
  * @brief   Robot library test — SerialFrame telemetry owned by App layer
  *
- *  Robot library is self-contained (QEI, MD20A, Kalman, PID, FF, Trajectory).
- *  SerialFrame lives here in main.c — the App layer owns telemetry.
- *
- *  RX (PC → STM32):  theta_ref [float], omega_ref [float]
- *  TX (STM32 → PC):  KalmanPosition [float], KalmanVelocity [float]
- *  TX rate: 100 Hz (decimated from 1 kHz control rate)
+ *  All commands and getters are in OUTPUT shaft space.
+ *  With N=5: Robot_Move(2π) → output shaft moves 2π rad, motor moves 10π rad.
  ******************************************************************************
  */
 /* USER CODE END Header */
@@ -42,17 +38,20 @@
 #define ENC_X           4
 #define ENC_OVERFLOW    61440
 
-/* ── Control ─────────────────────────────────────────────────────────────── */
+/* ── Gear ratio ──────────────────────────────────────────────────────────── */
+#define GEAR_RATIO_N    5.0f    /* output_rad = motor_rad / 5                */
+
+/* ── Control (OUTPUT shaft space) ───────────────────────────────────────── */
 #define CTRL_TS_S       0.001f
 #define CTRL_V_MAX      24.0f
-#define CTRL_OMEGA_MAX  28.0f
-#define CTRL_ALPHA_MAX  21.0f
+#define CTRL_OMEGA_MAX  5.6f    /* rad/s output shaft (28 motor / 5)         */
+#define CTRL_ALPHA_MAX  4.2f    /* rad/s² output shaft (21 motor / 5)        */
 
 /* ── Kalman noise ─────────────────────────────────────────────────────────── */
 #define KF_VAR_TAU_D    7.84e-6f
 #define KF_VAR_THETA    7.84e-9f
 
-/* ── PID gains ───────────────────────────────────────────────────────────── */
+/* ── PID gains (tuned for OUTPUT shaft) ─────────────────────────────────── */
 #define KP_VEL   15.0f
 #define KI_VEL   250.0f
 #define KD_VEL   0.0f
@@ -61,53 +60,47 @@
 #define KI_POS   200.0f
 #define KD_POS   0.0f
 
-/* ── Telemetry TX decimation ─────────────────────────────────────────────── */
-#define TELEM_TX_DIVIDER    10      /* 1 kHz / 10 = 100 Hz                   */
+/* ── Telemetry ───────────────────────────────────────────────────────────── */
+#define TELEM_TX_DIVIDER    10
 
 /* USER CODE END PD */
 
 /* USER CODE BEGIN PV */
 
-/* ── Robot ───────────────────────────────────────────────────────────────── */
 Robot_t robot;
 
-/* ── Telemetry ───────────────────────────────────────────────────────────── */
 static SerialFrame_t frame;
-static uint8_t       tx_tick  = 0;
+static uint8_t       tx_tick   = 0;
 static float         telem_pos = 0.0f;
 static float         telem_vel = 0.0f;
 
-/* ── RX from PC ──────────────────────────────────────────────────────────── */
-static float rx_theta_ref = 0.0f;
-static float rx_omega_ref = 0.0f;
-
 /* ═══════════════════════════════════════════════════════════════════════════
- *  Live-Expression Debug Command Interface
+ *  Live-Expression Debug Commands
  *
- *  HOW TO USE — STM32CubeIDE debug mode (motor keeps running while you type):
+ *  Add to Expressions window:
+ *    dbg_cmd          — write command ID
+ *    dbg_target       — target angle [rad, OUTPUT shaft]
+ *    dbg_jog_speed    — velocity jog speed magnitude [rad/s, output shaft, >0]
+ *    dbg_jog_step     — step jog size magnitude      [rad,   output shaft, >0]
+ *    robot.state      — 0=IDLE 1=MOVE 2=JOG_VEL 3=JOG_STEP 4..6=HOMING 7=ESTOP
+ *    robot.theta      — current position [rad, OUTPUT shaft]
+ *    robot.omega      — current velocity [rad/s, OUTPUT shaft]
  *
- *  Step 1: Add to Expressions / Live Expressions window:
- *            dbg_cmd          (write here to trigger a command)
- *            dbg_target       (set target angle in rad before Move / Home)
- *            robot.state      (read: 0=IDLE 1=MOVE 2..5=HOMING 6=ESTOP)
- *            robot.theta      (read: current position [rad])
- *            robot.omega      (read: current velocity [rad/s])
- *            robot.traj.T_f   (read: computed move duration [s])
- *
- *  Step 2: To command a MOVE to 6.28 rad (one revolution):
- *            Set dbg_target = 6.28
- *            Set dbg_cmd    = 1      ← triggers Robot_Move, auto-resets to 0
- *
- *  Command table (write to dbg_cmd):
- *    0  no-op
- *    1  Robot_Move(&robot, dbg_target)     smooth constrained move
- *    2  Robot_Stop(&robot)                 stop and hold current position
- *    3  Robot_EStop(&robot)                cut motor immediately
- *    4  Robot_SetHome(&robot)              zero reference at current position
- *    5  Robot_Home(&robot, dbg_target)     run full homing sequence
+ *  Commands:
+ *    1  Robot_Move(&robot, dbg_target)          smooth constrained move
+ *    2  Robot_Stop(&robot)                      stop and hold
+ *    3  Robot_EStop(&robot)                     cut motor immediately
+ *    4  Robot_SetHome(&robot)                   zero at current position
+ *    5  Robot_Home(&robot)                      homing → always returns to 0
+ *    6  Robot_JogVel  CCW  +dbg_jog_speed       continuous jog CCW
+ *    7  Robot_JogVel  CW   -dbg_jog_speed       continuous jog CW
+ *    8  Robot_JogStep CCW  +dbg_jog_step        single step CCW
+ *    9  Robot_JogStep CW   -dbg_jog_step        single step CW
  * ═══════════════════════════════════════════════════════════════════════════ */
-volatile uint8_t dbg_cmd    = 0;     /* write command ID here — auto-clears  */
-volatile float   dbg_target = 0.0f;  /* target [rad] used by cmd 1 and 5    */
+volatile uint8_t dbg_cmd       = 0;
+volatile float   dbg_target    = 0.0f;
+volatile float   dbg_jog_speed = 1.0f;   /* magnitude [rad/s] — direction set by cmd */
+volatile float   dbg_jog_step  = 0.1f;   /* magnitude [rad]   — direction set by cmd */
 
 /* USER CODE END PV */
 
@@ -128,7 +121,6 @@ int main(void)
 
     /* USER CODE BEGIN 2 */
 
-    /* ── Robot init ──────────────────────────────────────────────────────── */
     Robot_Config_t cfg = {
         .htim_encoder = &htim1,
         .htim_pwm     = &htim2,
@@ -145,6 +137,7 @@ int main(void)
         .Ke = MOTOR_KE, .Kt = MOTOR_KT,
         .J  = MOTOR_J,  .b  = MOTOR_B,
 
+        .N         = GEAR_RATIO_N,
         .Ts        = CTRL_TS_S,
         .V_max     = CTRL_V_MAX,
         .omega_max = CTRL_OMEGA_MAX,
@@ -162,35 +155,32 @@ int main(void)
 
     Robot_Init(&robot, &cfg);
 
-    /* ── SerialFrame telemetry ───────────────────────────────────────────── */
     SerialFrame_Init(&frame, &hlpuart1, 0x44, 'Y');
-    SerialFrame_Add_TX(&frame, "KalmanPosition", &telem_pos, SF_FLOAT);
-    SerialFrame_Add_TX(&frame, "KalmanVelocity", &telem_vel, SF_FLOAT);
-    SerialFrame_Add_RX(&frame, "theta_ref", &rx_theta_ref, SF_FLOAT);
-    SerialFrame_Add_RX(&frame, "omega_ref", &rx_omega_ref, SF_FLOAT);
+    SerialFrame_Add_TX(&frame, "OutputPosition", &telem_pos, SF_FLOAT);
+    SerialFrame_Add_TX(&frame, "OutputVelocity", &telem_vel, SF_FLOAT);
     SerialFrame_Receive(&frame, &hlpuart1);
 
-    /* ── Start control ISR LAST ──────────────────────────────────────────── */
     HAL_TIM_Base_Start_IT(&htim3);
 
     /* USER CODE END 2 */
 
-    /* ── Main loop: polls dbg_cmd and dispatches Robot commands ─────────── */
     while (1)
     {
-        /* Read once to avoid race if ISR writes during switch */
         uint8_t cmd = dbg_cmd;
         if (cmd != 0)
         {
-            dbg_cmd = 0;   /* clear first — command is consumed */
-
+            dbg_cmd = 0;
             switch (cmd)
             {
-                case 1: Robot_Move (&robot, dbg_target);  break;
-                case 2: Robot_Stop (&robot);               break;
-                case 3: Robot_EStop(&robot);               break;
-                case 4: Robot_SetHome(&robot);             break;
-                case 5: Robot_Home (&robot, dbg_target);  break;
+                case 1: Robot_Move    (&robot,  dbg_target);          break;
+                case 2: Robot_Stop    (&robot);                        break;
+                case 3: Robot_EStop   (&robot);                        break;
+                case 4: Robot_SetHome (&robot);                        break;
+                case 5: Robot_Home    (&robot);                        break;
+                case 6: Robot_JogVel  (&robot,  dbg_jog_speed);       break; /* CCW */
+                case 7: Robot_JogVel  (&robot, -dbg_jog_speed);       break; /* CW  */
+                case 8: Robot_JogStep (&robot,  dbg_jog_step);        break; /* CCW */
+                case 9: Robot_JogStep (&robot, -dbg_jog_step);        break; /* CW  */
                 default: break;
             }
         }
@@ -203,10 +193,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim != &htim3) return;
 
-    /* Robot control tick (QEI, Kalman, PID, FF, MD20A all inside) */
     Robot_Update(&robot, htim);
 
-    /* Telemetry TX @ 100 Hz */
     if (++tx_tick >= TELEM_TX_DIVIDER)
     {
         tx_tick   = 0;

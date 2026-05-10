@@ -36,19 +36,17 @@ void Robot_Init(Robot_t *robot, const Robot_Config_t *cfg)
     robot->Ts        = cfg->Ts;
     robot->V_max     = cfg->V_max;
     robot->omega_max = cfg->omega_max;
+    robot->N         = (cfg->N > 0.0f) ? cfg->N : 1.0f;
     robot->ls_port   = cfg->ls_port;
     robot->ls_pin    = cfg->ls_pin;
 
-    /* Motor parameters */
     DCMotor_Init(&robot->motor,
                  cfg->Rm, cfg->Lm,
                  cfg->Ke, cfg->Kt,
                  cfg->J,  cfg->b);
 
-    /* Motor driver */
     MD20A_init(&robot->driver, cfg->htim_pwm, cfg->ch_dir, cfg->ch_pwm);
 
-    /* Encoder — Observer_htim = htim_ctrl, used internally by QEI_update */
     QEI_init(&robot->encoder,
              cfg->htim_encoder,
              cfg->htim_ctrl,
@@ -57,14 +55,12 @@ void Robot_Init(Robot_t *robot, const Robot_Config_t *cfg)
              cfg->enc_overflow,
              cfg->Ts);
 
-    /* Kalman filter */
     KalmanFilterDCMotor_Init            (&robot->kalman, &robot->motor);
     KalmanFilterDCMotor_Set_ObserverPeriod  (&robot->kalman, cfg->Ts);
     KalmanFilterDCMotor_Set_ProcessNoise    (&robot->kalman, cfg->kf_var_tau_d);
     KalmanFilterDCMotor_Set_MeasurementNoise(&robot->kalman, cfg->kf_var_theta);
     KalmanFilterDCMotor_Start               (&robot->kalman, 0.0f, 0.0f, 0.0f, 0.0f);
 
-    /* PIDs */
     PID_Init(&robot->pid_vel,
              cfg->Kp_vel, cfg->Ki_vel, cfg->Kd_vel,
              cfg->Ts,
@@ -75,10 +71,8 @@ void Robot_Init(Robot_t *robot, const Robot_Config_t *cfg)
              cfg->Ts * ROBOT_POS_DIVIDER,
              -cfg->omega_max, cfg->omega_max);
 
-    /* Feedforward */
     FF_Init(&robot->ff, &robot->motor);
 
-    /* Trajectory — runs at slow loop rate, constraints from config */
     Trajectory_Init(&robot->traj,
                     cfg->Ts * ROBOT_POS_DIVIDER,
                     cfg->omega_max,
@@ -93,15 +87,14 @@ void Robot_Init(Robot_t *robot, const Robot_Config_t *cfg)
 
 void Robot_Move(Robot_t *robot, float target_rad)
 {
-    /* Tf is computed automatically from omega_max and alpha_max */
     Trajectory_SetTargetConstrained(&robot->traj, robot->theta, target_rad);
     uint32_t timeout = (uint32_t)(robot->traj.T_f * 1000.0f) + 2000;
     set_state(robot, ROBOT_MOVE, timeout);
 }
 
-void Robot_Home(Robot_t *robot, float offset_rad)
+void Robot_Home(Robot_t *robot)
 {
-    robot->home_goto    = offset_rad;
+    robot->home_goto    = 0.0f;   /* always return to 0 after homing */
     robot->ls_hit       = 0;
     reset_control(robot);
     robot->omega_target = ROBOT_HOMING_VEL_FAST_RAD;
@@ -130,6 +123,24 @@ void Robot_EStop(Robot_t *robot)
     set_state(robot, ROBOT_ESTOP, 0);
 }
 
+/* ── Jog ─────────────────────────────────────────────────────────────────── */
+
+void Robot_JogVel(Robot_t *robot, float speed_rad_s)
+{
+    robot->jog_speed = Saturate(speed_rad_s, -robot->omega_max, robot->omega_max);
+    reset_control(robot);
+    set_state(robot, ROBOT_JOG_VEL, 0);   /* no timeout — runs until Stop */
+}
+
+void Robot_JogStep(Robot_t *robot, float step_rad)
+{
+    robot->jog_step = step_rad;
+    float target = robot->theta + step_rad;
+    Trajectory_SetTargetConstrained(&robot->traj, robot->theta, target);
+    uint32_t timeout = (uint32_t)(robot->traj.T_f * 1000.0f) + 2000;
+    set_state(robot, ROBOT_JOG_STEP, timeout);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Robot_EXTI_Callback
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -141,29 +152,13 @@ void Robot_EXTI_Callback(Robot_t *robot, uint16_t GPIO_Pin)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Robot_Update
- *
- *  Call from HAL_TIM_PeriodElapsedCallback every tick.
- *  htim guard is here — safe to call unconditionally.
- *
- *  QEI_update uses encoder.Observer_htim (stored at init) for its own guard,
- *  so we pass htim through — the check inside QEI_update matches htim_ctrl.
- *
- *  Tick order:
- *    1. htim guard
- *    2. Encoder update  (uses robot->encoder.Observer_htim internally)
- *    3. Kalman predict(u_prev) + correct(encoder.Rad)
- *    4. SLOW LOOP @ Ts*ROBOT_POS_DIVIDER — state machine → omega_target
- *    5. FAST LOOP @ Ts — vel PID + FF → saturate → apply
  * ═══════════════════════════════════════════════════════════════════════════ */
 void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
 {
-    /* Guard: only execute on the designated control timer */
     if (htim != robot->htim_ctrl)  return;
     if (!robot->kalman.started)    return;
 
     /* ── 1. Encoder ──────────────────────────────────────────────────────── */
-    /* QEI_update checks Timer == Observer_htim internally.
-     * We pass htim (which equals htim_ctrl == Observer_htim set at init).  */
     QEI_update(&robot->encoder, htim);
 
     /* ── 2. Kalman ───────────────────────────────────────────────────────── */
@@ -171,10 +166,10 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                                (float)robot->encoder.Rad,
                                robot->u_prev);
 
-    robot->theta = KalmanFilterDCMotor_Get_Position   (&robot->kalman)
-                 - robot->home_offset;
-    robot->omega = KalmanFilterDCMotor_Get_Velocity   (&robot->kalman);
-    robot->tau_d = KalmanFilterDCMotor_Get_Disturbance(&robot->kalman);
+    robot->theta = (KalmanFilterDCMotor_Get_Position(&robot->kalman)
+                 - robot->home_offset) / robot->N;
+    robot->omega =  KalmanFilterDCMotor_Get_Velocity   (&robot->kalman) / robot->N;
+    robot->tau_d =  KalmanFilterDCMotor_Get_Disturbance(&robot->kalman);
 
     /* ── 3. SLOW LOOP ─────────────────────────────────────────────────────── */
     if (++robot->pos_tick >= ROBOT_POS_DIVIDER)
@@ -183,6 +178,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
 
         /* Timeout watchdog */
         if (robot->state != ROBOT_IDLE  &&
+            robot->state != ROBOT_JOG_VEL &&
             robot->state != ROBOT_ESTOP &&
             robot->timeout_ms > 0)
         {
@@ -192,7 +188,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
 
         switch (robot->state)
         {
-            /* ── Hold position ───────────────────────────────────────────── */
+            /* ── IDLE: hold position ─────────────────────────────────────── */
             case ROBOT_IDLE:
                 robot->omega_target = Saturate(
                     PID_Update(&robot->pid_pos,
@@ -200,7 +196,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                     -robot->omega_max, robot->omega_max);
                 break;
 
-            /* ── Smooth move ─────────────────────────────────────────────── */
+            /* ── MOVE: quintic trajectory ────────────────────────────────── */
             case ROBOT_MOVE:
                 Trajectory_Update(&robot->traj);
                 robot->omega_target = Saturate(
@@ -216,7 +212,28 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 }
                 break;
 
-            /* ── Homing: fast approach ────────────────────────────────────── */
+            /* ── JOG VEL: continuous velocity, no position loop ──────────── */
+            case ROBOT_JOG_VEL:
+                robot->omega_target = robot->jog_speed;
+                break;
+
+            /* ── JOG STEP: one constrained move then hold ────────────────── */
+            case ROBOT_JOG_STEP:
+                Trajectory_Update(&robot->traj);
+                robot->omega_target = Saturate(
+                    PID_Update(&robot->pid_pos,
+                               robot->traj.theta_ref, robot->theta)
+                    + robot->traj.omega_ref,
+                    -robot->omega_max, robot->omega_max);
+
+                if (!robot->traj.active)
+                {
+                    robot->theta_target = robot->traj.theta_f;
+                    set_state(robot, ROBOT_IDLE, 0);
+                }
+                break;
+
+            /* ── HOMING: fast approach ───────────────────────────────────── */
             case ROBOT_HOMING_FAST:
                 robot->omega_target = ROBOT_HOMING_VEL_FAST_RAD;
                 if (robot->ls_hit)
@@ -230,7 +247,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 }
                 break;
 
-            /* ── Homing: backoff ──────────────────────────────────────────── */
+            /* ── HOMING: backoff ─────────────────────────────────────────── */
             case ROBOT_HOMING_BACKOFF:
                 Trajectory_Update(&robot->traj);
                 robot->omega_target = Saturate(
@@ -247,7 +264,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 }
                 break;
 
-            /* ── Homing: slow creep ───────────────────────────────────────── */
+            /* ── HOMING: slow creep ──────────────────────────────────────── */
             case ROBOT_HOMING_SLOW:
                 robot->omega_target = ROBOT_HOMING_VEL_SLOW_RAD;
                 if (robot->ls_hit)
@@ -259,7 +276,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 }
                 break;
 
-            /* ── Homing: move to final offset ─────────────────────────────── */
+            /* ── HOMING: move to final offset ────────────────────────────── */
             case ROBOT_HOMING_OFFSET:
                 Trajectory_Update(&robot->traj);
                 robot->omega_target = Saturate(
@@ -293,19 +310,19 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                                  robot->omega_target,
                                  robot->omega);
 
-        /* omega_ref FF — only meaningful during trajectory states */
         float omega_ff = 0.0f;
         if (robot->state == ROBOT_MOVE          ||
+            robot->state == ROBOT_JOG_STEP      ||
             robot->state == ROBOT_HOMING_BACKOFF ||
             robot->state == ROBOT_HOMING_OFFSET)
         {
-            omega_ff = robot->traj.omega_ref;
+            /* traj.omega_ref is output shaft — convert to motor shaft for FF */
+            omega_ff = robot->traj.omega_ref * robot->N;
         }
 
         u_total = u_pid + FF_Compute(&robot->ff, omega_ff, robot->tau_d);
     }
 
-    /* Save pre-clamp voltage for Kalman predictor next tick */
     robot->u_prev = u_total;
 
     MD20A_setSpeed(&robot->driver,
