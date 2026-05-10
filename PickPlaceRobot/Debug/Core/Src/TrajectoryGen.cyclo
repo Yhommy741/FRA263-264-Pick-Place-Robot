@@ -1,5 +1,8 @@
-../Core/Src/TrajectoryGen.c:15:6:Trajectory_Init	1
-../Core/Src/TrajectoryGen.c:36:6:Trajectory_SetTarget	2
-../Core/Src/TrajectoryGen.c:84:6:Trajectory_Update	3
-../Core/Src/TrajectoryGen.c:136:6:Trajectory_Stop	1
-../Core/Src/TrajectoryGen.c:147:6:Trajectory_Reset	1
+../Core/Src/TrajectoryGen.c:33:13:compute_coefficients	1
+../Core/Src/TrajectoryGen.c:60:6:Trajectory_Init	1
+../Core/Src/TrajectoryGen.c:76:7:Trajectory_ComputeTf	6
+../Core/Src/TrajectoryGen.c:99:6:Trajectory_SetTargetConstrained	1
+../Core/Src/TrajectoryGen.c:113:6:Trajectory_SetTarget	2
+../Core/Src/TrajectoryGen.c:130:6:Trajectory_Update	3
+../Core/Src/TrajectoryGen.c:173:6:Trajectory_Stop	1
+../Core/Src/TrajectoryGen.c:180:6:Trajectory_Reset	1

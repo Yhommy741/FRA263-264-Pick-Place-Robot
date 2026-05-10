@@ -31,11 +31,11 @@ Core/Src/Robot.o: ../Core/Src/Robot.c ../Core/Inc/Robot.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h \
- ../Core/Inc/DCMotor.h ../Core/Inc/QEI.h \
- ../Core/Inc/KalmanFilterDCMotor.h \
+ ../Core/Inc/DCMotor.h ../Core/Inc/QEI.h ../Core/Inc/MD20A.h \
+ ../Core/Inc/PWM.h ../Core/Inc/KalmanFilterDCMotor.h \
  ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Include/arm_math.h \
  ../Drivers/CMSIS/Include/cmsis_compiler.h ../Core/Inc/Controller.h \
- ../Core/Inc/TrajectoryGen.h ../Core/Inc/MD20A.h ../Core/Inc/PWM.h
+ ../Core/Inc/TrajectoryGen.h
 ../Core/Inc/Robot.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
@@ -72,10 +72,10 @@ Core/Src/Robot.o: ../Core/Src/Robot.c ../Core/Inc/Robot.h \
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h:
 ../Core/Inc/DCMotor.h:
 ../Core/Inc/QEI.h:
+../Core/Inc/MD20A.h:
+../Core/Inc/PWM.h:
 ../Core/Inc/KalmanFilterDCMotor.h:
 ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Include/arm_math.h:
 ../Drivers/CMSIS/Include/cmsis_compiler.h:
 ../Core/Inc/Controller.h:
 ../Core/Inc/TrajectoryGen.h:
-../Core/Inc/MD20A.h:
-../Core/Inc/PWM.h:

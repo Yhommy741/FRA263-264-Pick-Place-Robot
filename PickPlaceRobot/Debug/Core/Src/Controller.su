@@ -1,6 +1,6 @@
-../Core/Inc/Controller.h:96:21:Saturate	24	static
-../Core/Src/Controller.c:15:6:PID_Init	40	static
-../Core/Src/Controller.c:32:7:PID_Update	32	static
-../Core/Src/Controller.c:47:6:PID_Reset	16	static
-../Core/Src/Controller.c:76:6:FF_Init	16	static
-../Core/Src/Controller.c:82:7:FF_Compute	32	static
+../Core/Inc/Controller.h:56:21:Saturate	24	static
+../Core/Src/Controller.c:12:6:PID_Init	40	static
+../Core/Src/Controller.c:28:7:PID_Update	32	static
+../Core/Src/Controller.c:43:6:PID_Reset	16	static
+../Core/Src/Controller.c:53:6:FF_Init	16	static
+../Core/Src/Controller.c:59:7:FF_Compute	24	static
