@@ -91,7 +91,7 @@
 #define MOTOR_B         0.0061979f
 
 /* ── Kalman noise variances ─────────────────────────────────────────────── */
-#define KF_VAR_TAU_D    7.84e-12f
+#define KF_VAR_TAU_D    7.84e-9f
 #define KF_VAR_THETA    7.84e-9f
 
 /* ── Supply voltage ─────────────────────────────────────────────────────── */
@@ -101,12 +101,12 @@
 #define OMEGA_MAX       30.0f      /* [rad/s] */
 
 /* ── Tuned PID gains ────────────────────────────────────────────────────── */
-#define KP_VEL          9.0f
+#define KP_VEL          12.0f
 #define KI_VEL          150.0f
 #define KD_VEL          0.0f
 
 #define KP_POS          13.0f
-#define KI_POS          100.0f
+#define KI_POS          135.0f
 #define KD_POS          0.0f
 
 /* USER CODE END PD */
