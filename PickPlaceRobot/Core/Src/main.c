@@ -45,19 +45,19 @@
 #define CTRL_TS_S       0.001f
 #define CTRL_V_MAX      24.0f
 #define CTRL_OMEGA_MAX  5.6f    /* rad/s output shaft (28 motor / 5)         */
-#define CTRL_ALPHA_MAX  4.2f    /* rad/s² output shaft (21 motor / 5)        */
+#define CTRL_ALPHA_MAX  5.0f    /* rad/s² output shaft (21 motor / 5)        */
 
 /* ── Kalman noise ─────────────────────────────────────────────────────────── */
-#define KF_VAR_TAU_D    7.84e-6f
+#define KF_VAR_TAU_D    7.84e-8f
 #define KF_VAR_THETA    7.84e-9f
 
 /* ── PID gains (tuned for OUTPUT shaft) ─────────────────────────────────── */
-#define KP_VEL   15.0f
-#define KI_VEL   250.0f
+#define KP_VEL   20.0f
+#define KI_VEL   175.0f
 #define KD_VEL   0.0f
 
 #define KP_POS   20.0f
-#define KI_POS   200.0f
+#define KI_POS   150.0f
 #define KD_POS   0.0f
 
 /* ── Telemetry ───────────────────────────────────────────────────────────── */
