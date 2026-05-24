@@ -1,10 +1,14 @@
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:307:19:HAL_UART_Init	5
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:382:19:HAL_HalfDuplex_Init	5
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:457:19:HAL_LIN_Init	7
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:556:19:HAL_MultiProcessor_Init	6
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:632:19:HAL_UART_DeInit	2
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:307:19:HAL_UART_Init	6
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:382:19:HAL_HalfDuplex_Init	6
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:457:19:HAL_LIN_Init	8
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:556:19:HAL_MultiProcessor_Init	7
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:632:19:HAL_UART_DeInit	3
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:679:13:HAL_UART_MspInit	1
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:694:13:HAL_UART_MspDeInit	1
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:730:19:HAL_UART_RegisterCallback	19
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:858:19:HAL_UART_UnRegisterCallback	18
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:963:19:HAL_UART_RegisterRxEventCallback	3
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:994:19:HAL_UART_UnRegisterRxEventCallback	2
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1121:19:HAL_UART_Transmit	11
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1219:19:HAL_UART_Receive	16
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:1311:19:HAL_UART_Transmit_IT	11
@@ -41,6 +45,7 @@
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2914:19:HAL_LIN_SendBreak	2
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2959:23:HAL_UART_GetState	1
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2975:10:HAL_UART_GetError	1
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:2997:6:UART_InitCallbacksToDefault	1
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3021:19:UART_SetConfig	67
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3238:6:UART_AdvFeatureConfig	10
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c:3312:19:UART_CheckIdleState	8

@@ -1,0 +1,11 @@
+../Core/Src/ModbusRTU.c:24:6:modbus_1t5_Timeout	4	static
+../Core/Src/ModbusRTU.c:32:6:modbus_3t5_Timeout	16	static
+../Core/Src/ModbusRTU.c:37:6:modbus_ErrorTimeout	16	static
+../Core/Src/ModbusRTU.c:43:6:Modbus_init	16	static
+../Core/Src/ModbusRTU.c:118:16:CRC16	24	static
+../Core/Src/ModbusRTU.c:132:6:Modbus_Protocol_Worker	16	static
+../Core/Src/ModbusRTU.c:231:6:Modbus_frame_response	8	static
+../Core/Src/ModbusRTU.c:249:6:modbusWrite1Register	16	static
+../Core/Src/ModbusRTU.c:269:6:modbusRead1Register	16	static
+../Core/Src/ModbusRTU.c:300:6:ModbusErrorReply	16	static
+../Core/Src/ModbusRTU.c:307:6:Modbus_Emission	16	static

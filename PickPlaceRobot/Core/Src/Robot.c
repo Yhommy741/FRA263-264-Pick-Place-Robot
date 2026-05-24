@@ -166,8 +166,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                                (float)robot->encoder.Rad,
                                robot->u_prev);
 
-    robot->theta = (KalmanFilterDCMotor_Get_Position(&robot->kalman)
-                 - robot->home_offset) / robot->N;
+    robot->theta = (robot->encoder.Rad - robot->home_offset) / robot->N;
     robot->omega =  KalmanFilterDCMotor_Get_Velocity   (&robot->kalman) / robot->N;
     robot->tau_d =  KalmanFilterDCMotor_Get_Disturbance(&robot->kalman);
 

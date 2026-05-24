@@ -22,7 +22,7 @@
 /* ── Homing constants ────────────────────────────────────────────────────── */
 #define ROBOT_HOMING_VEL_FAST_RAD   (-1.0f)   /* rad/s  fast approach  CW   */
 #define ROBOT_HOMING_VEL_SLOW_RAD   (-0.4f)   /* rad/s  slow creep     CW   */
-#define ROBOT_HOMING_BACKOFF_RAD    ( 1.0f)   /* rad    backoff        CCW  */
+#define ROBOT_HOMING_BACKOFF_RAD    ( 0.5f)   /* rad    backoff        CCW  */
 
 /* ── States ──────────────────────────────────────────────────────────────── */
 typedef enum {
