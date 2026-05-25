@@ -15,4 +15,3 @@
 ../Core/Src/stm32g4xx_it.c:282:6:TIM3_IRQHandler	1
 ../Core/Src/stm32g4xx_it.c:296:6:USART2_IRQHandler	1
 ../Core/Src/stm32g4xx_it.c:310:6:USART3_IRQHandler	1
-../Core/Src/stm32g4xx_it.c:324:6:EXTI15_10_IRQHandler	1

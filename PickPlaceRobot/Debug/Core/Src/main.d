@@ -30,13 +30,14 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h \
  ../Core/Inc/dma.h ../Core/Inc/main.h ../Core/Inc/tim.h \
  ../Core/Inc/usart.h ../Core/Inc/gpio.h ../Core/Inc/Robot.h \
- ../Core/Inc/DCMotor.h ../Core/Inc/QEI.h ../Core/Inc/MD20A.h \
- ../Core/Inc/PWM.h ../Core/Inc/KalmanFilterDCMotor.h \
+ ../Core/Inc/RobotConfig.h ../Core/Inc/tim.h ../Core/Inc/QEI.h \
+ ../Core/Inc/MD20A.h ../Core/Inc/PWM.h ../Core/Inc/KalmanFilterDCMotor.h \
  ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Include/arm_math.h \
- ../Drivers/CMSIS/Include/cmsis_compiler.h ../Core/Inc/Controller.h \
- ../Core/Inc/TrajectoryGen.h ../Core/Inc/JoystickInterface.h \
- ../Core/Inc/usart.h ../Core/Inc/ModbusRTU.h ../Core/Inc/BaseSystem.h \
- ../Core/Inc/ModbusRTU.h
+ ../Drivers/CMSIS/Include/cmsis_compiler.h ../Core/Inc/DCMotor.h \
+ ../Core/Inc/Controller.h ../Core/Inc/TrajectoryGen.h \
+ ../Core/Inc/Gripper.h ../Core/Inc/JoystickInterface.h \
+ ../Core/Inc/usart.h ../Core/Inc/BaseSystemInterface.h \
+ ../Core/Inc/ModbusRTU.h ../Core/Inc/Robot.h
 ../Core/Inc/main.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
 ../Core/Inc/stm32g4xx_hal_conf.h:
@@ -73,17 +74,20 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/usart.h:
 ../Core/Inc/gpio.h:
 ../Core/Inc/Robot.h:
-../Core/Inc/DCMotor.h:
+../Core/Inc/RobotConfig.h:
+../Core/Inc/tim.h:
 ../Core/Inc/QEI.h:
 ../Core/Inc/MD20A.h:
 ../Core/Inc/PWM.h:
 ../Core/Inc/KalmanFilterDCMotor.h:
 ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Include/arm_math.h:
 ../Drivers/CMSIS/Include/cmsis_compiler.h:
+../Core/Inc/DCMotor.h:
 ../Core/Inc/Controller.h:
 ../Core/Inc/TrajectoryGen.h:
+../Core/Inc/Gripper.h:
 ../Core/Inc/JoystickInterface.h:
 ../Core/Inc/usart.h:
+../Core/Inc/BaseSystemInterface.h:
 ../Core/Inc/ModbusRTU.h:
-../Core/Inc/BaseSystem.h:
-../Core/Inc/ModbusRTU.h:
+../Core/Inc/Robot.h:

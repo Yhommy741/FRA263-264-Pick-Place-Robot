@@ -1,6 +1,7 @@
-"./Core/Src/BaseSystem.o"
+"./Core/Src/BaseSystemInterface.o"
 "./Core/Src/Controller.o"
 "./Core/Src/DCMotor.o"
+"./Core/Src/Gripper.o"
 "./Core/Src/JoystickInterface.o"
 "./Core/Src/KalmanFilterDCMotor.o"
 "./Core/Src/MD20A.o"

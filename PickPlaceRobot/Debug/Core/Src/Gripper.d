@@ -1,5 +1,4 @@
-Core/Src/BaseSystem.o: ../Core/Src/BaseSystem.c ../Core/Inc/BaseSystem.h \
- ../Core/Inc/ModbusRTU.h \
+Core/Src/Gripper.o: ../Core/Src/Gripper.c ../Core/Inc/Gripper.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h \
  ../Core/Inc/stm32g4xx_hal_conf.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h \
@@ -29,8 +28,7 @@ Core/Src/BaseSystem.o: ../Core/Src/BaseSystem.c ../Core/Inc/BaseSystem.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_tim_ex.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart.h \
  ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_uart_ex.h
-../Core/Inc/BaseSystem.h:
-../Core/Inc/ModbusRTU.h:
+../Core/Inc/Gripper.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
 ../Core/Inc/stm32g4xx_hal_conf.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal_rcc.h:

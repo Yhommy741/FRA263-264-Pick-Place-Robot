@@ -1,0 +1,9 @@
+../Core/Src/Gripper.c:15:6:Gripper_Init	2
+../Core/Src/Gripper.c:54:13:Gripper_PulsePin	2
+../Core/Src/Gripper.c:64:6:Gripper_MoveUp	2
+../Core/Src/Gripper.c:69:6:Gripper_MoveDown	2
+../Core/Src/Gripper.c:74:6:Gripper_Open	2
+../Core/Src/Gripper.c:79:6:Gripper_Close	2
+../Core/Src/Gripper.c:86:16:Gripper_Up_State	3
+../Core/Src/Gripper.c:91:16:Gripper_Down_State	3
+../Core/Src/Gripper.c:96:16:Gripper_Claw_State	3
