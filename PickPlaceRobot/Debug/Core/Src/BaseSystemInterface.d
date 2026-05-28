@@ -35,7 +35,7 @@ Core/Src/BaseSystemInterface.o: ../Core/Src/BaseSystemInterface.c \
  ../Middlewares/Third_Party/ARM_CMSIS/CMSIS/DSP/Include/arm_math.h \
  ../Drivers/CMSIS/Include/cmsis_compiler.h ../Core/Inc/DCMotor.h \
  ../Core/Inc/Controller.h ../Core/Inc/TrajectoryGen.h \
- ../Core/Inc/Gripper.h
+ ../Core/Inc/Gripper.h ../Core/Inc/RobotConfig.h
 ../Core/Inc/BaseSystemInterface.h:
 ../Core/Inc/ModbusRTU.h:
 ../Drivers/STM32G4xx_HAL_Driver/Inc/stm32g4xx_hal.h:
@@ -81,3 +81,4 @@ Core/Src/BaseSystemInterface.o: ../Core/Src/BaseSystemInterface.c \
 ../Core/Inc/Controller.h:
 ../Core/Inc/TrajectoryGen.h:
 ../Core/Inc/Gripper.h:
+../Core/Inc/RobotConfig.h:

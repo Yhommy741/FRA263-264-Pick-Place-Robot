@@ -19,8 +19,7 @@ static void set_state(Robot_t *robot, Robot_State_t s, uint32_t timeout_ms)
 
 static void reset_control(Robot_t *robot)
 {
-    PID_Reset(&robot->pid_vel);
-    PID_Reset(&robot->pid_pos);
+    Controller_Reset(&robot->ctr);
     robot->omega_target = 0.0f;
     robot->u_prev       = 0.0f;
 }
@@ -68,26 +67,22 @@ void Robot_Init(Robot_t *robot)
     KalmanFilterDCMotor_Set_MeasurementNoise(&robot->kalman, KF_VAR_THETA);
     KalmanFilterDCMotor_Start               (&robot->kalman, 0.0f, 0.0f, 0.0f, 0.0f);
 
-    /* ── Velocity PID (fast loop — runs every Ts) ────────────────────────── */
-    PID_Init(&robot->pid_vel,
-             KP_VEL, KI_VEL, KD_VEL,
-             CTRL_PERIOD,
-             -MOTOR_V_MAX, MOTOR_V_MAX);
+    /* ── Controller (Cascade PID + Feedforward) ─────────────────────────── */
+    Controller_Init(&robot->ctr, &robot->motor,
+                    KP_VEL, KI_VEL, KD_VEL,
+                    KP_POS, KI_POS, KD_POS,
+                    CTRL_PERIOD,
+                    CTRL_LOOP_MULTI,
+                    RBT_MAX_SPEED * SPEED_RATIO,
+                    MOTOR_V_MAX);
+    robot->ctr.ControlMode = CTRL_MODE_CASCADE_FF_ALL;
 
-    /* ── Position PID (slow loop — runs every Ts × CTRL_LOOP_MULTI) ─────── */
-    PID_Init(&robot->pid_pos,
-             KP_POS, KI_POS, KD_POS,
-             CTRL_PERIOD * CTRL_LOOP_MULTI,
-             -RBT_MAX_SPEED, RBT_MAX_SPEED);
-
-    /* ── Feedforward ─────────────────────────────────────────────────────── */
-    FF_Init(&robot->ff, &robot->motor);
-
-    /* ── Trajectory generator ────────────────────────────────────────────── */
+    /* ── Trajectory generator (S-curve, jerk-limited) ───────────────────── */
     Trajectory_Init(&robot->traj,
                     CTRL_PERIOD * CTRL_LOOP_MULTI,
                     RBT_MAX_SPEED,
-                    RBT_MAX_ACCEL);
+                    RBT_MAX_ACCEL,
+                    RBT_MAX_JERK);
 
     /* ── Gripper ─────────────────────────────────────────────────────────── */
     Gripper_Init(&robot->gripper,
@@ -110,7 +105,21 @@ void Robot_Init(Robot_t *robot)
 
 void Robot_Move(Robot_t *robot, float target_rad)
 {
-    Trajectory_SetTargetConstrained(&robot->traj, robot->theta, target_rad);
+    /* ── Shortest-path wrap ───────────────────────────────────────────────
+     * target_rad is a logical position (0–2π range).
+     * robot->theta accumulates absolutely and never resets.
+     * Normalise delta to (−π, +π] so the robot always travels the
+     * shorter arc — e.g. 0°→340° goes CW by 20° not CCW by 340°.
+     * ──────────────────────────────────────────────────────────────────── */
+    const float TWO_PI = 6.28318530718f;
+    float delta = target_rad - robot->theta;
+
+    while (delta >  3.14159265359f) delta -= TWO_PI;
+    while (delta < -3.14159265359f) delta += TWO_PI;
+
+    float abs_target = robot->theta + delta;
+
+    Trajectory_SetTargetConstrained(&robot->traj, robot->theta, abs_target);
     uint32_t timeout = (uint32_t)(robot->traj.T_f * 1000.0f) + 2000;
     set_state(robot, ROBOT_MOVE, timeout);
 }
@@ -214,7 +223,7 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
     robot->omega =  KalmanFilterDCMotor_Get_Velocity   (&robot->kalman) / robot->N;
     robot->tau_d =  KalmanFilterDCMotor_Get_Disturbance(&robot->kalman);
 
-    /* ── 3. SLOW LOOP ────────────────────────────────────────────────────── */
+    /* ── 3. SLOW LOOP (outer position loop, runs every CTRL_LOOP_MULTI ticks) ─ */
     if (++robot->pos_tick >= CTRL_LOOP_MULTI)
     {
         robot->pos_tick = 0;
@@ -234,16 +243,19 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
             /* ── IDLE: hold position ─────────────────────────────────────── */
             case ROBOT_IDLE:
                 robot->omega_target = Saturate(
-                    PID_Update(&robot->pid_pos,
+                    PID_Update(&robot->ctr.pid_pos,
                                robot->theta_target, robot->theta),
                     -robot->omega_max, robot->omega_max);
                 break;
 
-            /* ── MOVE: quintic trajectory ────────────────────────────────── */
+            /* ── MOVE / JOG_STEP / HOMING trajectory states ─────────────── */
             case ROBOT_MOVE:
+            case ROBOT_JOG_STEP:
+            case ROBOT_HOMING_BACKOFF_STATE:
+            case ROBOT_HOMING_OFFSET_STATE:
                 Trajectory_Update(&robot->traj);
                 robot->omega_target = Saturate(
-                    PID_Update(&robot->pid_pos,
+                    PID_Update(&robot->ctr.pid_pos,
                                robot->traj.theta_ref, robot->theta)
                     + robot->traj.omega_ref,
                     -robot->omega_max, robot->omega_max);
@@ -251,29 +263,24 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 if (!robot->traj.active)
                 {
                     robot->theta_target = robot->traj.theta_f;
+                    if (robot->state == ROBOT_HOMING_OFFSET_STATE)
+                    {
+                        robot->home_offset  = robot->encoder.Rad;
+                        robot->theta_target = 0.0f;
+                    }
+                    else if (robot->state == ROBOT_HOMING_BACKOFF_STATE)
+                    {
+                        robot->ls_hit = 0;
+                        set_state(robot, ROBOT_HOMING_SLOW_STATE, 10000);
+                        break;
+                    }
                     set_state(robot, ROBOT_IDLE, 0);
                 }
                 break;
 
-            /* ── JOG VEL: continuous velocity, no position loop ──────────── */
+            /* ── JOG VEL: bypass pos loop, command velocity directly ──────── */
             case ROBOT_JOG_VEL:
                 robot->omega_target = robot->jog_speed;
-                break;
-
-            /* ── JOG STEP: one constrained move then hold ────────────────── */
-            case ROBOT_JOG_STEP:
-                Trajectory_Update(&robot->traj);
-                robot->omega_target = Saturate(
-                    PID_Update(&robot->pid_pos,
-                               robot->traj.theta_ref, robot->theta)
-                    + robot->traj.omega_ref,
-                    -robot->omega_max, robot->omega_max);
-
-                if (!robot->traj.active)
-                {
-                    robot->theta_target = robot->traj.theta_f;
-                    set_state(robot, ROBOT_IDLE, 0);
-                }
                 break;
 
             /* ── HOMING: fast approach ───────────────────────────────────── */
@@ -289,54 +296,16 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
                 }
                 break;
 
-            /* ── HOMING: backoff ─────────────────────────────────────────── */
-            case ROBOT_HOMING_BACKOFF_STATE:
-                Trajectory_Update(&robot->traj);
-                robot->omega_target = Saturate(
-                    PID_Update(&robot->pid_pos,
-                               robot->traj.theta_ref, robot->theta)
-                    + robot->traj.omega_ref,
-                    -robot->omega_max, robot->omega_max);
-
-                if (!robot->traj.active)
-                {
-                    robot->ls_hit       = 0;
-                    robot->omega_target = RBT_HOMING_SLOW;
-                    set_state(robot, ROBOT_HOMING_SLOW_STATE, 10000);
-                }
-                break;
-
             /* ── HOMING: slow creep ──────────────────────────────────────── */
             case ROBOT_HOMING_SLOW_STATE:
                 robot->omega_target = RBT_HOMING_SLOW;
                 if (robot->ls_hit)
                 {
-                    robot->ls_hit = 0;
-                    /* Step 1: Set zero at limit switch */
+                    robot->ls_hit       = 0;
                     robot->home_offset  = robot->encoder.Rad;
                     robot->theta_target = 0.0f;
-                    /* Step 2: Move to home_goto (set by Robot_Home or Robot_SetHome) */
                     Trajectory_SetTargetConstrained(&robot->traj, 0.0f, robot->home_goto);
                     set_state(robot, ROBOT_HOMING_OFFSET_STATE, 5000);
-                }
-                break;
-
-            /* ── HOMING: move to final offset then re-zero ───────────────── */
-            case ROBOT_HOMING_OFFSET_STATE:
-                Trajectory_Update(&robot->traj);
-                robot->omega_target = Saturate(
-                    PID_Update(&robot->pid_pos,
-                               robot->traj.theta_ref, robot->theta)
-                    + robot->traj.omega_ref,
-                    -robot->omega_max, robot->omega_max);
-
-                if (!robot->traj.active)
-                {
-                    /* Robot has arrived at the offset position.
-                     * Re-zero here so this becomes the true theta = 0. */
-                    robot->home_offset  = robot->encoder.Rad;
-                    robot->theta_target = 0.0f;
-                    set_state(robot, ROBOT_IDLE, 0);
                 }
                 break;
 
@@ -349,33 +318,43 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
         }
     }
 
-    /* ── 4. FAST LOOP ────────────────────────────────────────────────────── */
+    /* ── 4. FAST LOOP (inner velocity loop, runs every tick) ────────────── */
     float u_total = 0.0f;
 
     if (robot->state != ROBOT_ESTOP)
     {
-        float u_pid = PID_Update(&robot->pid_vel,
-                                 robot->omega_target,
-                                 robot->omega);
+        /* Motor-shaft velocity reference */
+        float omega_ref_motor = robot->omega_target * robot->N;
+
+        /* Motor-shaft measured velocity (direct from Kalman — no division) */
+        float omega_meas_motor = KalmanFilterDCMotor_Get_Velocity(&robot->kalman);
+
+        float u_pid = PID_Update(&robot->ctr.pid_vel,
+                                 omega_ref_motor,
+                                 omega_meas_motor);
 
         float omega_ff = 0.0f;
-        if (robot->state == ROBOT_MOVE                 ||
-            robot->state == ROBOT_JOG_STEP             ||
+        if (robot->state == ROBOT_MOVE                  ||
+            robot->state == ROBOT_JOG_STEP              ||
             robot->state == ROBOT_HOMING_BACKOFF_STATE  ||
             robot->state == ROBOT_HOMING_OFFSET_STATE)
         {
-            /* traj.omega_ref is output shaft — convert to motor shaft for FF */
+            /* traj.omega_ref is output-shaft — scale to motor-shaft for FF */
             omega_ff = robot->traj.omega_ref * robot->N;
         }
 
-        u_total = u_pid + FF_Compute(&robot->ff, omega_ff, robot->tau_d);
+        float u_ff = FF_Compute(&robot->ctr.ff, omega_ff, robot->tau_d,
+                                robot->ctr.pid_vel.Ts);
+
+        u_total = Saturate(u_pid + u_ff, -robot->V_max, robot->V_max);
     }
 
     robot->u_prev = u_total;
 
-    MD20A_setSpeed(&robot->driver,
-                   (Saturate(u_total, -robot->V_max, robot->V_max)
-                    / robot->V_max) * 100.0f);
+    MD20A_setSpeed(&robot->driver, (u_total / robot->V_max) * 100.0f);
+
+    /* ── 5. Gripper pulse timeout (non-blocking) ─────────────────────────── */
+    Gripper_Update(&robot->gripper);
 }
 
 /* ── Getters ─────────────────────────────────────────────────────────────── */

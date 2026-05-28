@@ -56,6 +56,17 @@
 #define OP_MODE_SET_HOME       0x0008   /* bit 3 — Set home                    */
 #define OP_MODE_TEST           0x0010   /* bit 4 — Test                        */
 
+/* ── Gripper FSM State IDs ─────────────────────────────────────────────────── */
+/* Used by seqGripState in BaseSystemInterface_t.                               */
+/* Shared between Section D (auto-sequence) and Section G (standalone Pick/Place). */
+#define GRP_FSM_IDLE      0   /* waiting for robot to reach position              */
+#define GRP_FSM_DOWN      1   /* MoveDown issued, waiting GRP_WAIT_TIME ms         */
+#define GRP_FSM_PENDULUM  2   /* Place only: waiting GRP_WAIT_PENDULUM_TIME ms
+                                  for pendulum to stabilise before Open             */
+#define GRP_FSM_ACTION    3   /* Open/Close issued, waiting GRP_WAIT_TIME ms       */
+#define GRP_FSM_UP        4   /* MoveUp issued, waiting GRP_WAIT_TIME ms           */
+#define GRP_FSM_DONE      5   /* sequence complete — advance step or finish         */
+
 /* ── Manual Gripper Command IDs (per README 3.3) ──────────────────────────── */
 #define GRP_CMD_NONE           0x00   /* no command                            */
 #define GRP_CMD_UP             0x00   /* Up = 0 (no bits set in group)         */
@@ -186,6 +197,15 @@ typedef struct {
     uint8_t  seqRunning;           /* 1 = sequence is actively executing      */
     uint16_t seqStep;              /* current step index (0 to steps-1)       */
     uint16_t seqTotalSteps;        /* total steps = pairs × 2                 */
+
+    /* ── Standalone Pick/Place FSM (completely separate from seqRunning) ── */
+    uint8_t  grpState;             /* GRP_FSM_* state for standalone Pick/Place */
+    uint32_t grpTimer;             /* HAL_GetTick() timestamp for grp FSM     */
+    uint8_t  grpCmd;               /* 1=Pick, 2=Place                         */
+
+    /* ── Sequence gripper state machine ─────────────────────────────────── */
+    uint8_t  seqGripState;         /* 0=idle 1=down 2=action 3=up             */
+    uint32_t seqGripTimer;         /* HAL_GetTick() timestamp for delay       */
     int16_t  latchedJogDeg;        /* last non-zero jog degrees seen by Update */
     int16_t  latchedP2PTarget;     /* latched P2P target value                 */
     uint16_t latchedP2PUnit;       /* latched P2P unit (deg/index)             */
@@ -194,6 +214,13 @@ typedef struct {
     uint16_t prevP2PUnit;          /* shadow — detect register change          */
 
     uint16_t prevGripperCmd;       /* edge detection — last gripper command   */
+    uint16_t prevGripperReg;       /* shadow — detect REG_MANUAL_GRIPPER write */
+    uint8_t  latchedGripperCmd;    /* latched gripper action (Up/Down/Open/Close) */
+    uint8_t  latchedGripperSeq;    /* latched gripper sequence (Pick=1/Place=2)   */
+    uint8_t  latchedGripperValid;  /* 1 = new gripper command pending             */
+    uint16_t prevGripperSeqReg;    /* shadow — detect REG_GRIPPER_SEQ write       */
+    uint8_t  latchedGripperSeqCmd; /* latched sequence type (Pick=1 / Place=2)    */
+    uint8_t  latchedGripperSeqValid; /* 1 = new Pick/Place sequence pending       */
 
     /* ── Dispatch diagnostics ───────────────────────────────────────────── */
     uint8_t  dbg_modeChanged;      /* 1 on the loop where mode changed        */

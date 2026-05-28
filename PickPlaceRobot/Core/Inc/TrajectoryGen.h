@@ -1,45 +1,36 @@
 /*
  * TrajectoryGen.h
  *
- *  Created : May 2026
+ *  Updated : May 2026
  *  Author  : FRA263/264 Group 5
  *
  * ═══════════════════════════════════════════════════════════════════════════
- *  Quintic (5th-order) Trajectory Generator
- *  with automatic duration from velocity and acceleration constraints
+ *  7-Segment S-Curve (Jerk-Limited) Trajectory Generator
  *
- *  Profile shape: zero velocity and acceleration at both endpoints.
- *    θ(0)  = θ_0,  θ̇(0)  = 0,  θ̈(0)  = 0
- *    θ(Tf) = θ_f,  θ̇(Tf) = 0,  θ̈(Tf) = 0
+ *  Generates a smooth, jerk-limited position profile with 7 phases:
  *
- *  Polynomial:
- *    θ(t) = a0 + a1·t + a2·t² + a3·t³ + a4·t⁴ + a5·t⁵
- *    a0 =  θ_0,  a1 = 0,  a2 = 0
- *    a3 =  10·Δθ / Tf³
- *    a4 = −15·Δθ / Tf⁴
- *    a5 =   6·Δθ / Tf⁵       where Δθ = θ_f − θ_0
+ *    Phase 1  [0,       t1]   Jerk = +jmax      (accel ramp-up)
+ *    Phase 2  [t1,      t2]   Jerk =  0         (constant accel)
+ *    Phase 3  [t2,      t3]   Jerk = -jmax      (accel ramp-down)
+ *    Phase 4  [t3,      t4]   Jerk =  0         (constant velocity cruise)
+ *    Phase 5  [t4,      t5]   Jerk = -jmax      (decel ramp-up)
+ *    Phase 6  [t5,      t6]   Jerk =  0         (constant decel)
+ *    Phase 7  [t6,      t7]   Jerk = +jmax      (decel ramp-down)
  *
- * ── Automatic Tf from constraints ─────────────────────────────────────────
+ *  Boundary conditions: θ̇(0)=0, θ̈(0)=0, θ̇(T)=0, θ̈(T)=0
  *
- *  Peak velocity  (occurs at t = Tf/2):
- *    ω_peak = (15/8) · |Δθ| / Tf
- *    → Tf_vel = (15/8) · |Δθ| / ω_max
+ *  Handles all 6 feasibility patterns from Biagiotti & Melchiorri:
+ *    Pattern 1: vmax ≤ va, s ≥ sa           (no cruise, no const-accel)
+ *    Pattern 2/3/4: short distance variants  (jerk-limited only)
+ *    Pattern 5: vmax ≥ va, s ≥ sv           (full 7-segment)
+ *    Pattern 6: vmax ≥ va, sa ≤ s < sv      (no cruise phase)
  *
- *  Peak acceleration  (occurs at t = Tf·(3 − √3)/6 ≈ 0.211·Tf):
- *    α_peak = (10√3/3) · |Δθ| / Tf²
- *    → Tf_acc = sqrt( (10√3/3) · |Δθ| / α_max )
- *
- *  Final duration:
- *    Tf = max(Tf_vel, Tf_acc)     ← both constraints satisfied
- *    Tf = max(Tf, Tf_min)         ← lower-bounded for numerical safety
+ *  All state is per-instance (no static globals) — multi-axis safe.
+ *  All arithmetic in float — Cortex-M4 FPU optimised.
  *
  * ── API ────────────────────────────────────────────────────────────────────
- *
- *  Old API (manual Tf):
- *    Trajectory_SetTarget(traj, theta_0, theta_f, T_f)   ← still available
- *
- *  New API (constraint-based):
- *    Trajectory_SetTargetConstrained(traj, theta_0, theta_f, omega_max, alpha_max)
+ *  Same as previous quintic version — drop-in replacement.
+ *  Trajectory_Init now takes jerk_max as additional parameter.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -59,16 +50,30 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 typedef struct {
 
-    /* Polynomial coefficients  θ(t) = Σ a[i]·tⁱ */
-    float a[6];
+    /* Constraints */
+    float omega_max;    /* Peak velocity limit      [rad/s]     */
+    float alpha_max;    /* Peak acceleration limit  [rad/s²]    */
+    float jerk_max;     /* Peak jerk limit          [rad/s³]    */
 
-    /* Profile parameters */
-    float T_f;          /* Computed move duration   [s]     */
-    float dt;           /* Slow-loop sample period  [s]     */
+    /* Timing */
+    float dt;           /* Slow-loop sample period  [s]         */
+    float T_f;          /* Total move duration      [s]         */
 
-    /* Constraints (stored for reference) */
-    float omega_max;    /* Peak velocity limit   [rad/s]    */
-    float alpha_max;    /* Peak acceleration limit [rad/s²] */
+    /* 7-segment time stamps */
+    float t1, t2, t3, t4, t5, t6, t7;
+
+    /* Direction of travel: +1 or -1 */
+    float dir;
+
+    /* Start / end */
+    float theta_0;
+    float theta_f;
+
+    /* Per-phase boundary states (pos, vel, accel at start of each phase)
+     * Indexed [0..6] → phases 1..7                                          */
+    float p[7];   /* position  at start of phase i */
+    float v[7];   /* velocity  at start of phase i */
+    float a[7];   /* accel     at start of phase i */
 
     /* Internal time counter */
     float t;
@@ -78,17 +83,13 @@ typedef struct {
     float omega_ref;    /* [rad/s]   */
     float alpha_ref;    /* [rad/s²]  */
 
-    /* Start / end */
-    float theta_0;
-    float theta_f;
-
     /* Status */
     uint8_t active;     /* 1 = running, 0 = at target */
 
 } Trajectory_t;
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  API
+ *  API  (drop-in compatible with quintic version except Trajectory_Init)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -96,22 +97,20 @@ typedef struct {
  *         Call once. Sets the slow-loop sample period and motion constraints.
  *
  * @param  traj       Handle
- * @param  dt         Slow-loop sample period [s]  (= Ts * ROBOT_POS_DIVIDER)
- * @param  omega_max  Maximum velocity   [rad/s]  — used by SetTargetConstrained
- * @param  alpha_max  Maximum acceleration [rad/s²] — used by SetTargetConstrained
+ * @param  dt         Slow-loop sample period [s]  (= Ts * CTRL_LOOP_MULTI)
+ * @param  omega_max  Maximum velocity    [rad/s]
+ * @param  alpha_max  Maximum acceleration [rad/s²]
+ * @param  jerk_max   Maximum jerk         [rad/s³]
  */
 void Trajectory_Init(Trajectory_t *traj,
                      float dt,
                      float omega_max,
-                     float alpha_max);
+                     float alpha_max,
+                     float jerk_max);
 
 /**
  * @brief  Plan a move with AUTOMATIC duration from motion constraints.
- *
- *         Tf is computed so that neither ω_max nor α_max is exceeded:
- *           Tf = max( (15/8)·|Δθ|/ω_max,  sqrt((10√3/3)·|Δθ|/α_max) )
- *
- *         Use this as the primary API for commanded moves.
+ *         Tf is computed so that none of ω_max, α_max, j_max is exceeded.
  *
  * @param  traj     Handle
  * @param  theta_0  Start position  [rad]
@@ -123,7 +122,7 @@ void Trajectory_SetTargetConstrained(Trajectory_t *traj,
 
 /**
  * @brief  Plan a move with MANUAL duration (legacy / homing use).
- *         Ignores ω_max / α_max — caller is responsible.
+ *         Ignores constraints — caller is responsible.
  *
  * @param  traj     Handle
  * @param  theta_0  Start position [rad]
@@ -154,9 +153,9 @@ void Trajectory_Reset(Trajectory_t *traj);
 
 /**
  * @brief  Compute the minimum Tf for a given displacement, respecting
- *         the stored ω_max and α_max.  Useful for preview / logging.
+ *         the stored ω_max, α_max, j_max.
  *
- * @param  traj   Handle (reads omega_max, alpha_max)
+ * @param  traj   Handle (reads constraints)
  * @param  dtheta Displacement |θ_f − θ_0| [rad]
  * @return Computed Tf [s]
  */

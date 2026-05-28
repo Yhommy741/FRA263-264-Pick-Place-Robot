@@ -44,9 +44,7 @@ typedef struct {
     QEI_t                   encoder;
     DCMotor_t               motor;      /* populated directly from RobotConfig.h */
     KalmanFilterDCMotor_t   kalman;
-    PID_t                   pid_vel;
-    PID_t                   pid_pos;
-    FeedforwardController_t ff;
+    Controller_t            ctr;
     Trajectory_t            traj;
     Gripper_t               gripper;
 
@@ -78,8 +76,10 @@ typedef struct {
     float home_offset;
     float home_goto;
 
-    /* Controller internal */
-    float   u_prev;
+    /* Voltage fed back to Kalman each tick */
+    float u_prev;
+
+    /* Slow-loop counter (increments every fast tick, resets at CTRL_LOOP_MULTI) */
     uint8_t pos_tick;
 
     /* Jog parameters */

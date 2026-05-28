@@ -40,7 +40,7 @@
 #define MD20A_DEFAULT_FREQ  2000.0f    /* 2 kHz                              */
 
 /* ── Dead-band — speeds below this coast ───────────────────────────────── */
-#define MD20A_DEADBAND      0.5f       /* %                                  */
+#define MD20A_DEADBAND      0.7f
 
 /* ── Motor driver struct ────────────────────────────────────────────────── */
 typedef struct {

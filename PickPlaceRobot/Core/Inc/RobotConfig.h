@@ -36,31 +36,33 @@
 #define RBT_WORKSPACE_MIN       -90.0f      /* Degree                       */
 #define RBT_WORKSPACE_MAX       450.0f      /* Degree                       */
 #define RBT_MAX_SPEED           5.6f        /* Rad/s                        */
-#define RBT_MAX_ACCEL           5.0f        /* Rad/s²                       */
+#define RBT_MAX_ACCEL           5.0f        /* Rad/s^2                      */
+#define RBT_MAX_JERK            15.0f       /* Rad/s^3                       */
+
 
 /* ── Homing Constants ────────────────────────────────────────────────────── */
-#define RBT_HOMING_FAST         (-0.4f)     /* Rad/s, fast approach (CW)    */
-#define RBT_HOMING_SLOW         (-0.2f)     /* Rad/s, slow creep (CW)       */
-#define RBT_HOMING_BACKOFF      0.2f        /* Rad, backoff (CCW)           */
-#define RBT_DEFAULT_HOMING_OFFSET 0.05236f  /* Rad                        */
+#define RBT_HOMING_FAST         (-0.5f)     /* Rad/s, fast approach (CW)    */
+#define RBT_HOMING_SLOW         (-0.3f)     /* Rad/s, slow creep (CW)       */
+#define RBT_HOMING_BACKOFF      0.3f        /* Rad, backoff (CCW)           */
+#define RBT_DEFAULT_HOMING_OFFSET 0.064577  /* Rad                        */
 
 /* ── Kalman Filter Noise Covariances ─────────────────────────────────────── */
-#define KF_VAR_TAU_D            4.98e-6f
+#define KF_VAR_TAU_D            4.98e-3f
 #define KF_VAR_THETA            4.98e-9f
 
 /* ── Control Loop Timing ─────────────────────────────────────────────────── */
 #define CTRL_HTIM_PTR           (&htim3)
-#define CTRL_PERIOD             0.001f      /* Seconds (1 ms)               */
+#define CTRL_PERIOD             0.0005f      /* Seconds (1 ms)               */
 #define CTRL_LOOP_MULTI         10          /* Pos loop = CTRL_PERIOD × 10  */
 
 /* ── PID Controller Gains ────────────────────────────────────────────────── */
-#define KP_VEL                  20.0f
-#define KI_VEL                  175.0f
+#define KP_VEL                  5.0f
+#define KI_VEL                  2.0f
 #define KD_VEL                  0.0f
 
-#define KP_POS                  60.0f
+#define KP_POS                  0.5f
 #define KI_POS                  0.0f
-#define KD_POS                  0.5f
+#define KD_POS                  0.01f
 
 /* ── Motor Driver MD20A ──────────────────────────────────────────────────── */
 #define MDRV_HTIM_PTR           (&htim2)
@@ -90,6 +92,11 @@
 
 #define GRP_CLAW_PORT_IN        GPIOB
 #define GRP_CLAW_PIN_IN         GPIO_PIN_2
+
+/* ── Gripper Sensors Time Delay ────────────────────────────────────────────── */
+
+#define GRP_WAIT_TIME			500
+#define GRP_WAIT_PENDULUM_TIME  1800
 
 /* ── Limit Switch ────────────────────────────────────────────────────────── */
 #define LIM_SW_PORT             GPIOC

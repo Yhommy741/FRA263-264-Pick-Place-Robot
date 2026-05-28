@@ -1,2 +1,3 @@
-../Core/Src/PWM.c:10:6:PWM_init	24	static
-../Core/Src/PWM.c:20:6:PWM_write	32	static
+../Core/Src/PWM.c:29:6:PWM_init	24	static
+../Core/Src/PWM.c:55:6:PWM_write	24	static
+../Core/Src/PWM.c:96:6:PWM_write_duty	16	static

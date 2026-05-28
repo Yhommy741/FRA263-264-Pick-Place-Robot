@@ -1,6 +1,9 @@
-../Core/Inc/Controller.h:56:21:Saturate	3
-../Core/Src/Controller.c:12:6:PID_Init	1
-../Core/Src/Controller.c:28:7:PID_Update	1
-../Core/Src/Controller.c:43:6:PID_Reset	1
-../Core/Src/Controller.c:53:6:FF_Init	1
-../Core/Src/Controller.c:59:7:FF_Compute	1
+../Core/Inc/Controller.h:102:21:Saturate	3
+../Core/Src/Controller.c:14:6:PID_Init	1
+../Core/Src/Controller.c:25:7:PID_Update	1
+../Core/Src/Controller.c:40:6:PID_Reset	1
+../Core/Src/Controller.c:52:6:FF_Init	1
+../Core/Src/Controller.c:61:7:FF_Compute	2
+../Core/Src/Controller.c:87:6:Controller_Init	2
+../Core/Src/Controller.c:113:6:Controller_Reset	1
+../Core/Src/Controller.c:126:7:Controller_Update	9
