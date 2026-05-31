@@ -3,18 +3,26 @@
  *
  * Created on: May 19, 2026
  * Author: FRA263/264 Group 5
+ *
+ * CHANGED (May 2026):
+ *   • BaseSystem_Dispatch() renamed to BaseSystem_Interface_Decode().
+ *   • All Robot_*() calls, FSM state machines, and gripper sequencing
+ *     removed — this file is now a pure Modbus register decoder.
+ *   • Robot.h / RobotConfig.h no longer included.
+ *   • Conversion macros (DEG_TO_RAD) kept locally for register decoding.
+ *
+ * FIX (June 2026):
+ *   • Section D: cmd_Gripper_auto_en now reads hbs->latchedGripperAuto
+ *     (captured atomically with the sequence slots at latch time) instead
+ *     of re-reading the live REG_GRIPPER_AUTO_EN register.  Re-reading the
+ *     live register created a race: if the PC changed REG_GRIPPER_AUTO_EN
+ *     between the latch call and the decode call (across main-loop
+ *     iterations), the sequence would run with the wrong enable state.
  */
 
 #include "BaseSystemInterface.h"
 #include "RobotConfig.h"
-
-/* Fallback — define locally if RobotConfig.h doesn't have it yet */
-#ifndef GRP_WAIT_TIME
-#define GRP_WAIT_TIME           500U
-#endif
-#ifndef GRP_WAIT_PENDULUM_TIME
-#define GRP_WAIT_PENDULUM_TIME  1000U  /* ms — pendulum stabilisation before Place */
-#endif
+#include <string.h>
 
 #define DEG_TO_RAD(d)     ((d) * 0.017453293f)
 #define RAD_TO_DEG(r)     ((r) * 57.295779513f)
@@ -34,10 +42,25 @@ void BaseSystemInterface_Init(BaseSystemInterface_t *hbs,
     hbs->modbus.RegisterSize = BASE_SYSTEM_REG_COUNT;
     Modbus_init(&hbs->modbus, hbs->registerFrame);
     hbs->registerFrame[REG_HEARTBEAT].U16 = HEARTBEAT_ROBOT_YA;
+
+    /* Sentinel: INT16_MIN can never arrive from Modbus (Modbus is unsigned
+     * wire; signed reinterpretation gives range -32768..+32767, but the PC
+     * treats 0x8000 as -32768 which is not a valid target angle).
+     * Setting prevP2PTarget to INT16_MIN guarantees the very first write —
+     * including target = 0 degrees / index 0 — triggers the P2P latch.     */
+    hbs->prevP2PTarget = INT16_MIN;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  BaseSystemInterface_Update
+ *
+ *  Runs the Modbus protocol worker and syncs all live registers into
+ *  hbs->data.  Also packs Robot state back into the register frame so the
+ *  PC sees current position, task bits, and sensor bits.
+ *
+ *  The write-back fields (realPosition, realVelocity, sensorBits, etc.)
+ *  must be refreshed by the caller (main.c or TaskManager) before this
+ *  function is called each loop.
  * ═══════════════════════════════════════════════════════════════════════════ */
 void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
 {
@@ -45,9 +68,11 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
     u16u8_t                    *rf   = hbs->registerFrame;
     BaseSystemInterface_Data_t *data = &hbs->data;
 
+    /* Heartbeat */
     if (rf[REG_HEARTBEAT].U16 == HEARTBEAT_PC_HI)
         rf[REG_HEARTBEAT].U16 = HEARTBEAT_ROBOT_YA;
 
+    /* ── Sync registers → data struct ───────────────────────────────────── */
     data->manualGripper     = rf[REG_MANUAL_GRIPPER].U16;
     data->gripperSequence   = rf[REG_GRIPPER_SEQ].U16;
     data->gripperAutoEnable = (uint8_t)(rf[REG_GRIPPER_AUTO_EN].U16 & 0x01);
@@ -64,17 +89,27 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
     data->p2pUnit         = rf[REG_P2P_UNIT].U16 & 0x01;
     data->p2pTarget       = (int16_t)rf[REG_P2P_TARGET].U16;
     data->softStopRequest = (uint8_t)(rf[REG_SOFT_STOP].U16 & 0x01);
+    /* Clear immediately — soft-stop is a one-shot trigger, not a persistent
+     * state.  Leaving it set causes TASK_EVT_STOP to be posted every loop. */
+    if (data->softStopRequest)
+    {
+        rf[REG_SOFT_STOP].U16 = 0;
+    }
 
-    /* P2P latch */
+    /* ── Latch: P2P ──────────────────────────────────────────────────────── *
+     * Fires whenever either register changes and no command is pending.      *
+     * prevP2PTarget is initialised to INT16_MIN in Init (not a valid angle)  *
+     * so the very first write — including target = 0 — always triggers.      */
     {
         uint16_t cu = rf[REG_P2P_UNIT].U16 & 0x01;
         int16_t  ct = (int16_t)rf[REG_P2P_TARGET].U16;
         if (!hbs->latchedP2PValid && (cu != hbs->prevP2PUnit || ct != hbs->prevP2PTarget))
-        { hbs->latchedP2PTarget=ct; hbs->latchedP2PUnit=cu; hbs->latchedP2PValid=1; }
-        hbs->prevP2PUnit=cu; hbs->prevP2PTarget=ct;
+        { hbs->latchedP2PTarget = ct; hbs->latchedP2PUnit = cu; hbs->latchedP2PValid = 1; }
+        hbs->prevP2PUnit   = cu;
+        hbs->prevP2PTarget = ct;
     }
 
-    /* Precision test latch */
+    /* ── Latch: Precision test ───────────────────────────────────────────── */
     if (rf[REG_PREC_REPEATS].U16 != 0 && !hbs->latchedPrecValid)
     {
         int16_t rep = (int16_t)rf[REG_PREC_REPEATS].U16;
@@ -86,7 +121,10 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
         hbs->latchedPrecValid = 1;
     }
 
-    /* Sequence latch */
+    /* ── Latch: Sequence ─────────────────────────────────────────────────── *
+     * REG_GRIPPER_AUTO_EN is captured HERE together with the sequence slots  *
+     * so the entire command is atomic — no race between latch and decode.    *
+     * Section D reads hbs->latchedGripperAuto, NOT the live register.        */
     if (rf[REG_SEQ_PAIRS].U16 != 0 && !hbs->latchedSeqValid)
     {
         hbs->latchedSeqPairs    = rf[REG_SEQ_PAIRS].U16;
@@ -97,7 +135,7 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
         hbs->latchedSeqValid = 1;
     }
 
-    /* Gripper sequence latch */
+    /* ── Latch: Gripper Pick/Place sequence ──────────────────────────────── */
     if (rf[REG_GRIPPER_SEQ].U16 != 0 && rf[REG_GRIPPER_SEQ].U16 != hbs->prevGripperSeqReg)
     {
         hbs->latchedGripperSeqCmd   = (uint8_t)(rf[REG_GRIPPER_SEQ].U16 & 0xFF);
@@ -105,7 +143,7 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
         hbs->prevGripperSeqReg      = rf[REG_GRIPPER_SEQ].U16;
     }
 
-    /* Manual gripper latch */
+    /* ── Latch: Manual gripper ───────────────────────────────────────────── */
     if (rf[REG_MANUAL_GRIPPER].U16 != hbs->prevGripperReg)
     {
         hbs->latchedGripperCmd   = (uint8_t)(rf[REG_MANUAL_GRIPPER].U16 & 0xFF);
@@ -113,18 +151,18 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
         hbs->prevGripperReg      = rf[REG_MANUAL_GRIPPER].U16;
     }
 
-    /* Jog latch */
+    /* ── Latch: Jog degrees ──────────────────────────────────────────────── */
     if (rf[REG_JOG_DEG].U16 != 0)
     { hbs->latchedJogDeg=(int16_t)rf[REG_JOG_DEG].U16; rf[REG_JOG_DEG].U16=0; data->jogDegrees=0; }
 
-    /* OpMode latch */
+    /* ── Latch: OpMode ───────────────────────────────────────────────────── */
     if (rf[REG_OP_MODE].U16 != OP_MODE_IDLE)
     { hbs->latchedOpMode=rf[REG_OP_MODE].U16; rf[REG_OP_MODE].U16=OP_MODE_IDLE; }
     data->operatingMode = rf[REG_OP_MODE].U16;
 
     hbs->pending.rx_frame_count++;
 
-    /* Pack Robot → PC */
+    /* ── Pack Robot → PC (write-back — fields written by caller/TaskManager) */
     rf[REG_SENSORS].U16      = data->sensorBits;
     rf[REG_ROBOT_TASK].U16   = data->currentTaskBits;
     rf[REG_POSITION].U16     = (uint16_t)(int16_t)(data->realPosition     * 10.0f);
@@ -134,35 +172,33 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  BaseSystem_Dispatch
+ *  BaseSystem_Interface_Decode
+ *
+ *  Pure decoder: reads hbs latch state (populated by BaseSystemInterface_Update)
+ *  and writes every decoded command into hbs->pending.
+ *
+ *  NO Robot_*() calls are made here.
+ *  TaskManager calls Task_PostFromModbus() after this function to feed
+ *  hbs->pending into the event queue.
  * ═══════════════════════════════════════════════════════════════════════════ */
-void BaseSystem_Dispatch(BaseSystemInterface_t *hbs, Robot_t *robot)
+void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
 {
     BaseSystemInterface_Data_t *data = &hbs->data;
     BSI_PendingCmd_t           *pnd  = &hbs->pending;
 
+    /* Preserve diagnostic counters across the memset */
     uint32_t _rx   = pnd->rx_frame_count;
-    uint32_t _disp = pnd->cmd_dispatch_count;
+    uint32_t _dec  = pnd->cmd_decode_count;
     memset(pnd, 0, sizeof(BSI_PendingCmd_t));
-    pnd->rx_frame_count     = _rx;
-    pnd->cmd_dispatch_count = _disp;
+    pnd->rx_frame_count   = _rx;
+    pnd->cmd_decode_count = _dec;
 
     /* ── SECTION A: Safety ───────────────────────────────────────────────── */
+    /* Read emergencyActive for informational use only.
+     * Do NOT return early here — Stop commands must still be decoded and
+     * posted so the user can clear an ESTOP latch via Modbus Soft Stop.     */
     pnd->cmd_EStop = (uint8_t)(data->emergencyActive & 0x01);
-    if (pnd->cmd_EStop)
-    {
-        hbs->seqRunning = 0; hbs->precRunning = 0;
-        hbs->grpState   = GRP_FSM_IDLE;
-        Robot_EStop(robot);
-        return;
-    }
-    pnd->cmd_Stop = data->softStopRequest;
-    if (pnd->cmd_Stop)
-    {
-        hbs->seqRunning = 0; hbs->precRunning = 0;
-        hbs->grpState   = GRP_FSM_IDLE;
-        Robot_Stop(robot);
-    }
+    pnd->cmd_Stop  = data->softStopRequest;
 
     /* ── SECTION B: Operating mode ───────────────────────────────────────── */
     uint8_t modeChanged = (hbs->latchedOpMode != OP_MODE_IDLE);
@@ -171,311 +207,132 @@ void BaseSystem_Dispatch(BaseSystemInterface_t *hbs, Robot_t *robot)
         pnd->opMode = hbs->latchedOpMode;
         hbs->dbg_lastOpMode = hbs->latchedOpMode;
         hbs->latchedOpMode  = OP_MODE_IDLE;
-        pnd->cmd_dispatch_count++;
+        pnd->cmd_decode_count++;
     }
     hbs->dbg_modeChanged = modeChanged;
 
     switch (pnd->opMode)
     {
         case OP_MODE_HOMING:
-            pnd->cmd_Home = 1; hbs->dbg_home_call_count++;
-            Robot_Home(robot); break;
+            pnd->cmd_Home = 1;
+            break;
         case OP_MODE_JOG:
-            pnd->cmd_Jog_step_rad = DEG_TO_RAD((float)data->jogDegrees);
-            if (pnd->cmd_Jog_step_rad != 0.0f) Robot_JogStep(robot, pnd->cmd_Jog_step_rad);
+            /* latchedJogDeg was captured by Update(); data->jogDegrees is
+             * already 0 at this point (zeroed when latched).  Read the latch. */
+            if (hbs->latchedJogDeg != 0)
+            {
+                pnd->cmd_Jog_step_rad = DEG_TO_RAD((float)hbs->latchedJogDeg);
+                hbs->latchedJogDeg    = 0;
+                pnd->cmd_decode_count++;
+            }
             break;
         case OP_MODE_SET_HOME:
-            robot->home_offset = (float)robot->encoder.Rad;
-            robot->theta = 0.0f; robot->theta_target = 0.0f; break;
-        default: break;
+            /* Signal SET_HOME via opMode — TaskManager checks for this value */
+            break;
+        default:
+            break;
+    }
+
+    /* ── SECTION B2: Performance test ────────────────────────────────────── *
+     * Triggered by testType=1.  Positions come from PREC_INIT / PREC_FINAL  *
+     * (same registers as precision test, same unit: degree or index×5°).    *
+     * Velocity and accel limits come from PERF_VEL / PERF_ACCEL.            */
+    if (data->testType == 1 && data->perfVelocity != 0 && data->perfAcceleration != 0)
+    {
+        pnd->cmd_Perf_vel_rad_s    = (float)data->perfVelocity;
+        pnd->cmd_Perf_accel_rad_s2 = (float)data->perfAcceleration;
+
+        /* Decode positions — mirror of Section C logic */
+        pnd->cmd_Perf_init_rad  = hbs->latchedPrecUseIndex
+                                 ? DEG_TO_RAD((float)hbs->latchedPrecInit  * 5.0f)
+                                 : DEG_TO_RAD((float)hbs->latchedPrecInit);
+        pnd->cmd_Perf_final_rad = hbs->latchedPrecUseIndex
+                                 ? DEG_TO_RAD((float)hbs->latchedPrecFinal * 5.0f)
+                                 : DEG_TO_RAD((float)hbs->latchedPrecFinal);
+
+        pnd->cmd_Perf_valid = 1;
+
+        /* Clear ALL trigger registers so stale values cannot re-fire.
+         * The PC must write fresh vel/accel values with every new trigger. */
+        hbs->registerFrame[REG_TEST_TYPE].U16  = 0;
+        hbs->registerFrame[REG_PERF_VEL].U16   = 0;
+        hbs->registerFrame[REG_PERF_ACCEL].U16 = 0;
+        data->testType         = 0;
+        data->perfVelocity     = 0;
+        data->perfAcceleration = 0;
+        pnd->cmd_decode_count++;
     }
 
     /* ── SECTION C: Precision test ───────────────────────────────────────── */
     if (hbs->latchedPrecValid)
     {
-        hbs->latchedPrecValid = 0; pnd->cmd_dispatch_count++;
-        hbs->precInitRad  = hbs->latchedPrecUseIndex
-                          ? DEG_TO_RAD((float)hbs->latchedPrecInit  * 5.0f)
-                          : DEG_TO_RAD((float)hbs->latchedPrecInit);
-        hbs->precFinalRad = hbs->latchedPrecUseIndex
-                          ? DEG_TO_RAD((float)hbs->latchedPrecFinal * 5.0f)
-                          : DEG_TO_RAD((float)hbs->latchedPrecFinal);
-        hbs->precTotalReps = hbs->latchedPrecRepeats;
-        hbs->precCurrentRep = 0; hbs->precGoingToFinal = 1; hbs->precRunning = 1;
-        Robot_Move(robot, hbs->precFinalRad);
-    }
-    else if (hbs->precRunning && Robot_IsIdle(robot))
-    {
-        if (hbs->precGoingToFinal)
-        { hbs->precGoingToFinal = 0; Robot_Move(robot, hbs->precInitRad); }
-        else
-        {
-            hbs->precCurrentRep++;
-            if (hbs->precCurrentRep >= hbs->precTotalReps) hbs->precRunning = 0;
-            else { hbs->precGoingToFinal = 1; Robot_Move(robot, hbs->precFinalRad); }
-        }
+        hbs->latchedPrecValid = 0;
+        pnd->cmd_decode_count++;
+        pnd->cmd_Prec_init_rad  = hbs->latchedPrecUseIndex
+                                 ? DEG_TO_RAD((float)hbs->latchedPrecInit  * 5.0f)
+                                 : DEG_TO_RAD((float)hbs->latchedPrecInit);
+        pnd->cmd_Prec_final_rad = hbs->latchedPrecUseIndex
+                                 ? DEG_TO_RAD((float)hbs->latchedPrecFinal * 5.0f)
+                                 : DEG_TO_RAD((float)hbs->latchedPrecFinal);
+        pnd->cmd_Prec_repeats   = (int16_t)hbs->latchedPrecRepeats;
     }
 
     /* ── SECTION D: Multi-position sequence ──────────────────────────────── */
     if (hbs->latchedSeqValid)
     {
-        hbs->latchedSeqValid = 0; pnd->cmd_Seq_pairs = hbs->latchedSeqPairs;
-        pnd->cmd_dispatch_count++;
+        hbs->latchedSeqValid = 0;
+        pnd->cmd_Seq_pairs   = hbs->latchedSeqPairs;
+        pnd->cmd_decode_count++;
+        /* FIX: Use hbs->latchedGripperAuto — captured atomically with the
+         * sequence slots when REG_SEQ_PAIRS was written in Update().
+         * Do NOT re-read the live REG_GRIPPER_AUTO_EN register here: if the
+         * PC changes that register between the latch call and this decode
+         * call (across main-loop iterations), the sequence would run with
+         * the wrong enable state — exactly the stale-data bug this fixes.  */
+        pnd->cmd_Gripper_auto_en = hbs->latchedGripperAuto;
         for (int i = 0; i < 16; i++)
         {
-            /* All sequence positions are positive indices (0–72 for 0–360°).
-             * The PC may send some slots as negative int16 — take abs()
-             * to recover the correct magnitude, then convert to radians. */
             float idx = (float)(hbs->latchedSeqSlots[i] < 0
                                 ? -hbs->latchedSeqSlots[i]
                                 :  hbs->latchedSeqSlots[i]);
-            hbs->seqSlotsRad[i]       = DEG_TO_RAD(idx * 5.0f);
-            pnd->cmd_Seq_slots_rad[i] = hbs->seqSlotsRad[i];
-        }
-        hbs->seqTotalSteps = hbs->latchedSeqPairs * 2;
-        if (hbs->seqTotalSteps > 16) hbs->seqTotalSteps = 16;
-        hbs->seqStep = 0; hbs->seqGripState = GRP_FSM_IDLE; hbs->seqRunning = 1;
-        Robot_Move(robot, hbs->seqSlotsRad[0]);
-    }
-    else if (hbs->seqRunning)
-    {
-        if (!hbs->latchedGripperAuto)
-        {
-            if (Robot_IsIdle(robot))
-            {
-                hbs->seqStep++;
-                if (hbs->seqStep >= hbs->seqTotalSteps) hbs->seqRunning = 0;
-                else Robot_Move(robot, hbs->seqSlotsRad[hbs->seqStep]);
-            }
-        }
-        else
-        {
-            /* ── Gripper FSM for multi-position sequence ───────────────────
-             *
-             *  State flow per step:
-             *    Pick  (even): arrive → DOWN → Close → UP → move to Place
-             *    Place (odd) : arrive → PENDULUM wait → DOWN → Open → UP → move to Pick
-             *
-             *  GRP_FSM_PENDULUM fires immediately on arrival at the Place
-             *  position, before MoveDown, to let the carried object settle.
-             * ──────────────────────────────────────────────────────────────── */
-            switch (hbs->seqGripState)
-            {
-                /* ── Wait for robot to arrive ───────────────────────────── */
-                case GRP_FSM_IDLE:
-                    if (Robot_IsIdle(robot))
-                    {
-                        if (hbs->seqStep % 2 == 0)
-                        {
-                            /* Pick — go straight down */
-                            Robot_Gripper_MoveDown(robot);
-                            hbs->seqGripTimer = HAL_GetTick();
-                            hbs->seqGripState = GRP_FSM_DOWN;
-                        }
-                        else
-                        {
-                            /* Place — wait for pendulum to settle first */
-                            hbs->seqGripTimer = HAL_GetTick();
-                            hbs->seqGripState = GRP_FSM_PENDULUM;
-                        }
-                    }
-                    break;
-
-                /* ── Pendulum stabilisation wait (Place steps only) ──────── */
-                case GRP_FSM_PENDULUM:
-                    if (HAL_GetTick() - hbs->seqGripTimer >= GRP_WAIT_PENDULUM_TIME)
-                    {
-                        Robot_Gripper_MoveDown(robot);
-                        hbs->seqGripTimer = HAL_GetTick();
-                        hbs->seqGripState = GRP_FSM_DOWN;
-                    }
-                    break;
-
-                /* ── Gripper travelling down ─────────────────────────────── */
-                case GRP_FSM_DOWN:
-                    if (HAL_GetTick() - hbs->seqGripTimer >= GRP_WAIT_TIME)
-                    {
-                        if (hbs->seqStep % 2 == 0)
-                            Robot_Gripper_Close(robot);  /* Pick */
-                        else
-                            Robot_Gripper_Open(robot);   /* Place */
-                        hbs->seqGripTimer = HAL_GetTick();
-                        hbs->seqGripState = GRP_FSM_ACTION;
-                    }
-                    break;
-
-                /* ── Open/Close settling ─────────────────────────────────── */
-                case GRP_FSM_ACTION:
-                    if (HAL_GetTick() - hbs->seqGripTimer >= GRP_WAIT_TIME)
-                    {
-                        Robot_Gripper_MoveUp(robot);
-                        hbs->seqGripTimer = HAL_GetTick();
-                        hbs->seqGripState = GRP_FSM_UP;
-                    }
-                    break;
-
-                /* ── Gripper travelling up ───────────────────────────────── */
-                case GRP_FSM_UP:
-                    if (HAL_GetTick() - hbs->seqGripTimer >= GRP_WAIT_TIME)
-                    {
-                        hbs->seqGripState = GRP_FSM_IDLE;
-                        hbs->seqStep++;
-                        if (hbs->seqStep >= hbs->seqTotalSteps) hbs->seqRunning = 0;
-                        else Robot_Move(robot, hbs->seqSlotsRad[hbs->seqStep]);
-                    }
-                    break;
-
-                default:
-                    hbs->seqGripState = GRP_FSM_IDLE;
-                    break;
-            }
+            pnd->cmd_Seq_slots_rad[i] = DEG_TO_RAD(idx * 5.0f);
         }
     }
 
     /* ── SECTION E: P2P move ─────────────────────────────────────────────── */
     if (hbs->latchedP2PValid)
     {
-        float tr = (hbs->latchedP2PUnit == P2P_UNIT_DEG)
-                 ? DEG_TO_RAD((float)hbs->latchedP2PTarget)
-                 : DEG_TO_RAD((float)hbs->latchedP2PTarget * 5.0f);
-        pnd->cmd_P2P_target_rad = tr;
-        hbs->latchedP2PValid = 0; pnd->cmd_dispatch_count++;
-        Robot_Move(robot, tr);
+        pnd->cmd_P2P_target_rad = (hbs->latchedP2PUnit == P2P_UNIT_DEG)
+                                 ? DEG_TO_RAD((float)hbs->latchedP2PTarget)
+                                 : DEG_TO_RAD((float)hbs->latchedP2PTarget * 5.0f);
+        pnd->cmd_P2P_valid  = 1;   /* explicit flag — target can legally be 0.0f */
+        hbs->latchedP2PValid = 0;
+        pnd->cmd_decode_count++;
     }
 
-    /* ── SECTION F: Jog ──────────────────────────────────────────────────── */
+    /* ── SECTION F: Jog (latched from Update, independent of mode) ───────── */
     if (!modeChanged && hbs->latchedJogDeg != 0)
     {
         pnd->cmd_Jog_step_rad = DEG_TO_RAD((float)hbs->latchedJogDeg);
-        hbs->latchedJogDeg = 0; pnd->cmd_dispatch_count++;
-        Robot_JogStep(robot, pnd->cmd_Jog_step_rad);
+        hbs->latchedJogDeg = 0;
+        pnd->cmd_decode_count++;
     }
 
     /* ── SECTION G: Manual gripper ───────────────────────────────────────── */
-    pnd->cmd_Gripper_manual  = (uint8_t)(data->manualGripper & 0xFF);
-    pnd->cmd_Gripper_seq     = data->gripperSequence;
-    pnd->cmd_Gripper_auto_en = data->gripperAutoEnable;
+    /* NOTE: cmd_Gripper_auto_en is set in Section D from the atomically
+     * latched value (hbs->latchedGripperAuto).  It must NOT be overwritten
+     * here from the live register.                                           */
 
-    /* Single immediate action */
     if (hbs->latchedGripperValid)
     {
-        hbs->latchedGripperValid = 0;
-        switch (hbs->latchedGripperCmd)
-        {
-            case GRP_CMD_UP:    Robot_Gripper_MoveUp  (robot); break;
-            case GRP_CMD_DOWN:  Robot_Gripper_MoveDown(robot); break;
-            case GRP_CMD_OPEN:  Robot_Gripper_Open    (robot); break;
-            case GRP_CMD_CLOSE: Robot_Gripper_Close   (robot); break;
-            default: break;
-        }
+        hbs->latchedGripperValid      = 0;
+        pnd->cmd_Gripper_manual       = hbs->latchedGripperCmd;
+        pnd->cmd_Gripper_manual_valid = 1;   /* GRP_CMD_UP == 0, so need a separate flag */
     }
 
-    /* ── Standalone Pick/Place FSM ───────────────────────────────────────── *
-     *                                                                         *
-     *  COMPLETELY SEPARATE from the sequence FSM above.                       *
-     *  Uses its own state variable: hbs->grpState                             *
-     *  and its own timer:           hbs->grpTimer                             *
-     *                                                                         *
-     *  grpCmd: 1 = Pick  → DOWN → ACTION/Close → UP                          *
-     *          2 = Place → DOWN → PENDULUM → ACTION/Open → UP                *
-     *                                                                         *
-     *  GRP_WAIT_PENDULUM_TIME is inserted before Open for Place commands.     *
-     * ─────────────────────────────────────────────────────────────────────── */
-
-    /* Arm: new command received — only accept when idle */
-    if (hbs->latchedGripperSeqValid && hbs->grpState == GRP_FSM_IDLE)
+    if (hbs->latchedGripperSeqValid)
     {
         hbs->latchedGripperSeqValid = 0;
-        hbs->grpCmd   = hbs->latchedGripperSeqCmd;   /* 1=Pick, 2=Place */
-        hbs->grpTimer = HAL_GetTick();
-
-        if (hbs->grpCmd == 1)
-        {
-            /* Pick — go straight down */
-            Robot_Gripper_MoveDown(robot);
-            hbs->grpState = GRP_FSM_DOWN;
-        }
-        else
-        {
-            /* Place — wait for pendulum to settle before going down */
-            hbs->grpState = GRP_FSM_PENDULUM;
-        }
+        pnd->cmd_Gripper_seq = hbs->latchedGripperSeqCmd;
     }
-
-    /* Run the standalone FSM every call while active */
-    switch (hbs->grpState)
-    {
-        case GRP_FSM_IDLE:
-            break;
-
-        /* ── Pendulum stabilisation wait (Place only) ────────────────────── */
-        case GRP_FSM_PENDULUM:
-            if (HAL_GetTick() - hbs->grpTimer >= GRP_WAIT_PENDULUM_TIME)
-            {
-                Robot_Gripper_MoveDown(robot);
-                hbs->grpTimer = HAL_GetTick();
-                hbs->grpState = GRP_FSM_DOWN;
-            }
-            break;
-
-        /* ── Gripper travelling down ─────────────────────────────────────── */
-        case GRP_FSM_DOWN:
-            if (HAL_GetTick() - hbs->grpTimer >= GRP_WAIT_TIME)
-            {
-                if (hbs->grpCmd == 1)
-                    Robot_Gripper_Close(robot);  /* Pick */
-                else
-                    Robot_Gripper_Open(robot);   /* Place */
-                hbs->grpTimer = HAL_GetTick();
-                hbs->grpState = GRP_FSM_ACTION;
-            }
-            break;
-
-        /* ── Open/Close settling ─────────────────────────────────────────── */
-        case GRP_FSM_ACTION:
-            if (HAL_GetTick() - hbs->grpTimer >= GRP_WAIT_TIME)
-            {
-                Robot_Gripper_MoveUp(robot);
-                hbs->grpTimer = HAL_GetTick();
-                hbs->grpState = GRP_FSM_UP;
-            }
-            break;
-
-        /* ── Gripper travelling up ───────────────────────────────────────── */
-        case GRP_FSM_UP:
-            if (HAL_GetTick() - hbs->grpTimer >= GRP_WAIT_TIME)
-            {
-                hbs->grpState = GRP_FSM_IDLE;
-            }
-            break;
-
-        default:
-            hbs->grpState = GRP_FSM_IDLE;
-            break;
-    }
-
-    /* ── SECTION H: Write-back ───────────────────────────────────────────── */
-    pnd->wb_position_rad   = Robot_GetPosition(robot);
-    pnd->wb_velocity_rad_s = Robot_GetVelocity(robot);
-    data->realPosition     = RAD_TO_DEG(pnd->wb_position_rad);
-    data->realVelocity     = pnd->wb_velocity_rad_s;
-    data->realAcceleration = 0.0f;
-
-    {
-        uint16_t tb = 0;
-        Robot_State_t rs = Robot_GetState(robot);
-        if (rs==ROBOT_HOMING_FAST_STATE||rs==ROBOT_HOMING_BACKOFF_STATE||
-            rs==ROBOT_HOMING_SLOW_STATE||rs==ROBOT_HOMING_OFFSET_STATE)  tb = 0x0001;
-        else if (rs==ROBOT_MOVE||rs==ROBOT_JOG_VEL||rs==ROBOT_JOG_STEP) tb = 0x0008;
-        pnd->wb_taskBits = tb; data->currentTaskBits = tb;
-    }
-
-    pnd->wb_emergencyActive = (Robot_GetState(robot) == ROBOT_ESTOP) ? 1U : 0U;
-    data->emergencyActive   = pnd->wb_emergencyActive;
-
-    pnd->wb_sensorBits  = 0;
-    pnd->wb_sensorBits |= (Robot_Gripper_GetUpState  (robot)==GRP_STATE_HIGH) ? (1u<<0) : 0u;
-    pnd->wb_sensorBits |= (Robot_Gripper_GetDownState(robot)==GRP_STATE_HIGH) ? (1u<<1) : 0u;
-    pnd->wb_sensorBits |= (Robot_Gripper_GetClawState(robot)==GRP_STATE_HIGH) ? (1u<<2) : 0u;
-    data->sensorBits = pnd->wb_sensorBits;
 }

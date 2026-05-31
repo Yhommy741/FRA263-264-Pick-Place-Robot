@@ -1,0 +1,14 @@
+../Core/Src/TaskManager.c:23:23:_queue_empty	16	static
+../Core/Src/TaskManager.c:26:23:_queue_full	16	static
+../Core/Src/TaskManager.c:32:16:_queue_has_estop	24	static
+../Core/Src/TaskManager.c:42:16:_queue_has_stop	24	static
+../Core/Src/TaskManager.c:52:20:_queue_pop	32	static
+../Core/Src/TaskManager.c:60:13:_queue_flush	16	static
+../Core/Src/TaskManager.c:68:16:_guard_ok	24	static
+../Core/Src/TaskManager.c:153:6:Task_Init	16	static
+../Core/Src/TaskManager.c:172:9:Task_PostEvent	32	static
+../Core/Src/TaskManager.c:193:6:Task_PostFromModbus	160	static
+../Core/Src/TaskManager.c:330:6:Task_PostFromJoystick	40	static
+../Core/Src/TaskManager.c:401:13:_gripper_seq_tick	16	static
+../Core/Src/TaskManager.c:450:13:_seq_grip_tick	24	static
+../Core/Src/TaskManager.c:523:6:Task_Run	56	static,ignoring_inline_asm

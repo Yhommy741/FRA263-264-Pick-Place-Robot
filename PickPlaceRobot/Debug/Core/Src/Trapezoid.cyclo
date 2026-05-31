@@ -1,0 +1,8 @@
+../Core/Src/Trapezoid.c:37:13:plan	4
+../Core/Src/Trapezoid.c:94:6:Trapezoid_Init	1
+../Core/Src/Trapezoid.c:106:6:Trapezoid_SetTarget	1
+../Core/Src/Trapezoid.c:111:6:Trapezoid_SetTargetConstrained	1
+../Core/Src/Trapezoid.c:121:7:Trapezoid_ComputeTf	3
+../Core/Src/Trapezoid.c:162:6:Trapezoid_Update	22
+../Core/Src/Trapezoid.c:232:6:Trapezoid_Stop	1
+../Core/Src/Trapezoid.c:240:6:Trapezoid_Reset	1

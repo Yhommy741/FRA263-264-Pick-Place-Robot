@@ -1,0 +1,14 @@
+../Core/Src/TaskManager.c:23:23:_queue_empty	1
+../Core/Src/TaskManager.c:26:23:_queue_full	1
+../Core/Src/TaskManager.c:32:16:_queue_has_estop	3
+../Core/Src/TaskManager.c:42:16:_queue_has_stop	3
+../Core/Src/TaskManager.c:52:20:_queue_pop	1
+../Core/Src/TaskManager.c:60:13:_queue_flush	1
+../Core/Src/TaskManager.c:68:16:_guard_ok	43
+../Core/Src/TaskManager.c:153:6:Task_Init	2
+../Core/Src/TaskManager.c:172:9:Task_PostEvent	2
+../Core/Src/TaskManager.c:193:6:Task_PostFromModbus	17
+../Core/Src/TaskManager.c:330:6:Task_PostFromJoystick	12
+../Core/Src/TaskManager.c:401:13:_gripper_seq_tick	11
+../Core/Src/TaskManager.c:450:13:_seq_grip_tick	14
+../Core/Src/TaskManager.c:523:6:Task_Run	46

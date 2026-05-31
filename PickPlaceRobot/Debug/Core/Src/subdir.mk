@@ -16,8 +16,10 @@ C_SRCS += \
 ../Core/Src/PWM.c \
 ../Core/Src/QEI.c \
 ../Core/Src/Robot.c \
+../Core/Src/SCurve.c \
 ../Core/Src/SerialFrame.c \
-../Core/Src/TrajectoryGen.c \
+../Core/Src/TaskManager.c \
+../Core/Src/Trapezoid.c \
 ../Core/Src/dma.c \
 ../Core/Src/gpio.c \
 ../Core/Src/main.c \
@@ -41,8 +43,10 @@ OBJS += \
 ./Core/Src/PWM.o \
 ./Core/Src/QEI.o \
 ./Core/Src/Robot.o \
+./Core/Src/SCurve.o \
 ./Core/Src/SerialFrame.o \
-./Core/Src/TrajectoryGen.o \
+./Core/Src/TaskManager.o \
+./Core/Src/Trapezoid.o \
 ./Core/Src/dma.o \
 ./Core/Src/gpio.o \
 ./Core/Src/main.o \
@@ -66,8 +70,10 @@ C_DEPS += \
 ./Core/Src/PWM.d \
 ./Core/Src/QEI.d \
 ./Core/Src/Robot.d \
+./Core/Src/SCurve.d \
 ./Core/Src/SerialFrame.d \
-./Core/Src/TrajectoryGen.d \
+./Core/Src/TaskManager.d \
+./Core/Src/Trapezoid.d \
 ./Core/Src/dma.d \
 ./Core/Src/gpio.d \
 ./Core/Src/main.d \
@@ -87,7 +93,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/BaseSystemInterface.cyclo ./Core/Src/BaseSystemInterface.d ./Core/Src/BaseSystemInterface.o ./Core/Src/BaseSystemInterface.su ./Core/Src/Controller.cyclo ./Core/Src/Controller.d ./Core/Src/Controller.o ./Core/Src/Controller.su ./Core/Src/DCMotor.cyclo ./Core/Src/DCMotor.d ./Core/Src/DCMotor.o ./Core/Src/DCMotor.su ./Core/Src/Gripper.cyclo ./Core/Src/Gripper.d ./Core/Src/Gripper.o ./Core/Src/Gripper.su ./Core/Src/JoystickInterface.cyclo ./Core/Src/JoystickInterface.d ./Core/Src/JoystickInterface.o ./Core/Src/JoystickInterface.su ./Core/Src/KalmanFilterDCMotor.cyclo ./Core/Src/KalmanFilterDCMotor.d ./Core/Src/KalmanFilterDCMotor.o ./Core/Src/KalmanFilterDCMotor.su ./Core/Src/MD20A.cyclo ./Core/Src/MD20A.d ./Core/Src/MD20A.o ./Core/Src/MD20A.su ./Core/Src/ModbusRTU.cyclo ./Core/Src/ModbusRTU.d ./Core/Src/ModbusRTU.o ./Core/Src/ModbusRTU.su ./Core/Src/PWM.cyclo ./Core/Src/PWM.d ./Core/Src/PWM.o ./Core/Src/PWM.su ./Core/Src/QEI.cyclo ./Core/Src/QEI.d ./Core/Src/QEI.o ./Core/Src/QEI.su ./Core/Src/Robot.cyclo ./Core/Src/Robot.d ./Core/Src/Robot.o ./Core/Src/Robot.su ./Core/Src/SerialFrame.cyclo ./Core/Src/SerialFrame.d ./Core/Src/SerialFrame.o ./Core/Src/SerialFrame.su ./Core/Src/TrajectoryGen.cyclo ./Core/Src/TrajectoryGen.d ./Core/Src/TrajectoryGen.o ./Core/Src/TrajectoryGen.su ./Core/Src/dma.cyclo ./Core/Src/dma.d ./Core/Src/dma.o ./Core/Src/dma.su ./Core/Src/gpio.cyclo ./Core/Src/gpio.d ./Core/Src/gpio.o ./Core/Src/gpio.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32g4xx_hal_msp.cyclo ./Core/Src/stm32g4xx_hal_msp.d ./Core/Src/stm32g4xx_hal_msp.o ./Core/Src/stm32g4xx_hal_msp.su ./Core/Src/stm32g4xx_it.cyclo ./Core/Src/stm32g4xx_it.d ./Core/Src/stm32g4xx_it.o ./Core/Src/stm32g4xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32g4xx.cyclo ./Core/Src/system_stm32g4xx.d ./Core/Src/system_stm32g4xx.o ./Core/Src/system_stm32g4xx.su ./Core/Src/tim.cyclo ./Core/Src/tim.d ./Core/Src/tim.o ./Core/Src/tim.su ./Core/Src/usart.cyclo ./Core/Src/usart.d ./Core/Src/usart.o ./Core/Src/usart.su
+	-$(RM) ./Core/Src/BaseSystemInterface.cyclo ./Core/Src/BaseSystemInterface.d ./Core/Src/BaseSystemInterface.o ./Core/Src/BaseSystemInterface.su ./Core/Src/Controller.cyclo ./Core/Src/Controller.d ./Core/Src/Controller.o ./Core/Src/Controller.su ./Core/Src/DCMotor.cyclo ./Core/Src/DCMotor.d ./Core/Src/DCMotor.o ./Core/Src/DCMotor.su ./Core/Src/Gripper.cyclo ./Core/Src/Gripper.d ./Core/Src/Gripper.o ./Core/Src/Gripper.su ./Core/Src/JoystickInterface.cyclo ./Core/Src/JoystickInterface.d ./Core/Src/JoystickInterface.o ./Core/Src/JoystickInterface.su ./Core/Src/KalmanFilterDCMotor.cyclo ./Core/Src/KalmanFilterDCMotor.d ./Core/Src/KalmanFilterDCMotor.o ./Core/Src/KalmanFilterDCMotor.su ./Core/Src/MD20A.cyclo ./Core/Src/MD20A.d ./Core/Src/MD20A.o ./Core/Src/MD20A.su ./Core/Src/ModbusRTU.cyclo ./Core/Src/ModbusRTU.d ./Core/Src/ModbusRTU.o ./Core/Src/ModbusRTU.su ./Core/Src/PWM.cyclo ./Core/Src/PWM.d ./Core/Src/PWM.o ./Core/Src/PWM.su ./Core/Src/QEI.cyclo ./Core/Src/QEI.d ./Core/Src/QEI.o ./Core/Src/QEI.su ./Core/Src/Robot.cyclo ./Core/Src/Robot.d ./Core/Src/Robot.o ./Core/Src/Robot.su ./Core/Src/SCurve.cyclo ./Core/Src/SCurve.d ./Core/Src/SCurve.o ./Core/Src/SCurve.su ./Core/Src/SerialFrame.cyclo ./Core/Src/SerialFrame.d ./Core/Src/SerialFrame.o ./Core/Src/SerialFrame.su ./Core/Src/TaskManager.cyclo ./Core/Src/TaskManager.d ./Core/Src/TaskManager.o ./Core/Src/TaskManager.su ./Core/Src/Trapezoid.cyclo ./Core/Src/Trapezoid.d ./Core/Src/Trapezoid.o ./Core/Src/Trapezoid.su ./Core/Src/dma.cyclo ./Core/Src/dma.d ./Core/Src/dma.o ./Core/Src/dma.su ./Core/Src/gpio.cyclo ./Core/Src/gpio.d ./Core/Src/gpio.o ./Core/Src/gpio.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32g4xx_hal_msp.cyclo ./Core/Src/stm32g4xx_hal_msp.d ./Core/Src/stm32g4xx_hal_msp.o ./Core/Src/stm32g4xx_hal_msp.su ./Core/Src/stm32g4xx_it.cyclo ./Core/Src/stm32g4xx_it.d ./Core/Src/stm32g4xx_it.o ./Core/Src/stm32g4xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32g4xx.cyclo ./Core/Src/system_stm32g4xx.d ./Core/Src/system_stm32g4xx.o ./Core/Src/system_stm32g4xx.su ./Core/Src/tim.cyclo ./Core/Src/tim.d ./Core/Src/tim.o ./Core/Src/tim.su ./Core/Src/usart.cyclo ./Core/Src/usart.d ./Core/Src/usart.o ./Core/Src/usart.su
 
 .PHONY: clean-Core-2f-Src
 

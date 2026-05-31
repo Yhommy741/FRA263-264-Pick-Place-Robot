@@ -2,18 +2,25 @@
  * BaseSystemInterface.h
  *
  * Created on: May 19, 2026
- * Author: Assistant
+ * Author: FRA263/264 Group 5
  *
  * ModbusRTU is embedded as a submodule inside BaseSystemInterface_t.
  * The global instance (BaseSystemInterface_t BaseSystem) is declared
  * in main.c — NOT here. No extern in this header.
+ *
+ * CHANGED (May 2026):
+ *   • BaseSystem_Dispatch() renamed to BaseSystem_Interface_Decode().
+ *   • BaseSystem_Interface_Decode() no longer calls any Robot_*() functions.
+ *     It only decodes Modbus registers into BSI_PendingCmd_t (hbs->pending).
+ *   • All Robot dispatch, FSM state, and gripper sequencing have been moved
+ *     to TaskManager (TaskManager.h / TaskManager.c).
+ *   • Robot.h is no longer included here — BSI is now Robot-agnostic.
  */
 
 #ifndef INC_BASESYSTEMINTERFACE_H_
 #define INC_BASESYSTEMINTERFACE_H_
 
 #include "ModbusRTU.h"
-#include "Robot.h"
 
 /* ── Register Address Definitions ─────────────────────────────────────────── */
 #define REG_HEARTBEAT          0x00
@@ -57,22 +64,20 @@
 #define OP_MODE_TEST           0x0010   /* bit 4 — Test                        */
 
 /* ── Gripper FSM State IDs ─────────────────────────────────────────────────── */
-/* Used by seqGripState in BaseSystemInterface_t.                               */
-/* Shared between Section D (auto-sequence) and Section G (standalone Pick/Place). */
-#define GRP_FSM_IDLE      0   /* waiting for robot to reach position              */
-#define GRP_FSM_DOWN      1   /* MoveDown issued, waiting GRP_WAIT_TIME ms         */
-#define GRP_FSM_PENDULUM  2   /* Place only: waiting GRP_WAIT_PENDULUM_TIME ms
-                                  for pendulum to stabilise before Open             */
-#define GRP_FSM_ACTION    3   /* Open/Close issued, waiting GRP_WAIT_TIME ms       */
-#define GRP_FSM_UP        4   /* MoveUp issued, waiting GRP_WAIT_TIME ms           */
-#define GRP_FSM_DONE      5   /* sequence complete — advance step or finish         */
+/* Used by TaskManager's gripper FSMs.  Kept here as shared constants.         */
+#define GRP_FSM_IDLE      0
+#define GRP_FSM_DOWN      1
+#define GRP_FSM_PENDULUM  2
+#define GRP_FSM_ACTION    3
+#define GRP_FSM_UP        4
+#define GRP_FSM_DONE      5
 
 /* ── Manual Gripper Command IDs (per README 3.3) ──────────────────────────── */
-#define GRP_CMD_NONE           0x00   /* no command                            */
-#define GRP_CMD_UP             0x00   /* Up = 0 (no bits set in group)         */
-#define GRP_CMD_DOWN           0x01   /* bit 0                                 */
-#define GRP_CMD_OPEN           0x02   /* bit 1                                 */
-#define GRP_CMD_CLOSE          0x04   /* bit 2                                 */
+#define GRP_CMD_NONE           0x00
+#define GRP_CMD_UP             0x00
+#define GRP_CMD_DOWN           0x01
+#define GRP_CMD_OPEN           0x02
+#define GRP_CMD_CLOSE          0x04
 
 /* ── P2P Unit IDs (per README 3.10) ───────────────────────────────────────── */
 #define P2P_UNIT_DEG           0x00   /* bit 0 = 0 → degree  */
@@ -81,55 +86,60 @@
 /* ─────────────────────────────────────────────────────────────────────────────
  * BSI_PendingCmd_t
  *
- * Debug-visible snapshot of every command decoded from BaseSystem.data.
- * BaseSystem_Dispatch() writes here on every call.
- * Actual Robot_*() / Gripper_*() calls are NOT made yet —
- * inspect these fields in the live-expression window first.
- * ───────────────────────────────────────────────────────────────────────────── */
+ * Written by BaseSystem_Interface_Decode() every call.
+ * TaskManager reads these fields and dispatches Robot_*() calls.
+ * ─────────────────────────────────────────────────────────────────────────── */
 typedef struct {
 
     /* ── Operating mode ──────────────────────────────────────────────────── */
-    uint16_t opMode;            /* raw OP_MODE_* value from register           */
+    uint16_t opMode;             /* raw OP_MODE_* value from register          */
 
     /* ── Motion ──────────────────────────────────────────────────────────── */
-    uint8_t  cmd_Home;          /* 1 = home requested (OP_MODE_HOMING)         */
-    uint8_t  cmd_Stop;          /* 1 = soft-stop requested                     */
-    uint8_t  cmd_EStop;         /* 1 = emergency-stop requested                */
+    uint8_t  cmd_Home;           /* 1 = home requested (OP_MODE_HOMING)        */
+    uint8_t  cmd_Stop;           /* 1 = soft-stop requested                    */
+    uint8_t  cmd_EStop;          /* 1 = emergency-stop requested               */
 
     /* P2P */
-    float    cmd_P2P_target_rad;/* converted move target [rad]                 */
+    float    cmd_P2P_target_rad; /* converted move target [rad]                */
+    uint8_t  cmd_P2P_valid;      /* 1 = a P2P command is pending (target can
+                                    be 0.0f, so value alone is not sufficient) */
 
     /* Jog */
-    float    cmd_Jog_step_rad;  /* jog step converted to [rad]                 */
+    float    cmd_Jog_step_rad;   /* jog step converted to [rad]                */
 
     /* Performance mode */
-    float    cmd_Perf_vel_rad_s;     /* [rad/s]  */
-    float    cmd_Perf_accel_rad_s2;  /* [rad/s²] */
+    float    cmd_Perf_vel_rad_s;      /* [rad/s]  — clamped to RBT_MAX_SPEED  */
+    float    cmd_Perf_accel_rad_s2;   /* [rad/s²] — clamped to RBT_MAX_ACCEL  */
+    float    cmd_Perf_init_rad;       /* start position [rad] from PREC_INIT  */
+    float    cmd_Perf_final_rad;      /* end   position [rad] from PREC_FINAL */
+    uint8_t  cmd_Perf_valid;          /* 1 = performance test command pending  */
 
     /* Precision test */
-    float    cmd_Prec_init_rad;      /* init position  [rad] */
-    float    cmd_Prec_final_rad;     /* final position [rad] */
-    int16_t  cmd_Prec_repeats;       /* repeat count         */
+    float    cmd_Prec_init_rad;       /* init position  [rad] */
+    float    cmd_Prec_final_rad;      /* final position [rad] */
+    int16_t  cmd_Prec_repeats;        /* repeat count         */
 
     /* Sequence */
-    float    cmd_Seq_slots_rad[16];  /* each slot converted to [rad] */
-    uint16_t cmd_Seq_pairs;          /* number of valid pairs        */
+    float    cmd_Seq_slots_rad[16];   /* each slot converted to [rad] */
+    uint16_t cmd_Seq_pairs;           /* number of valid pairs        */
 
     /* ── Gripper ─────────────────────────────────────────────────────────── */
-    uint8_t  cmd_Gripper_manual;     /* GRP_CMD_* value                        */
-    uint16_t cmd_Gripper_seq;        /* gripper sequence ID from register       */
-    uint8_t  cmd_Gripper_auto_en;    /* 1 = gripper auto-mode enabled           */
+    uint8_t  cmd_Gripper_manual;       /* GRP_CMD_* value                      */
+    uint8_t  cmd_Gripper_manual_valid; /* 1 = a gripper cmd is pending (needed
+                                          because GRP_CMD_UP == 0x00)          */
+    uint16_t cmd_Gripper_seq;          /* gripper sequence ID from register     */
+    uint8_t  cmd_Gripper_auto_en;      /* 1 = gripper auto-mode enabled         */
 
-    /* ── Diagnostics ────────────────────────────────────────────────────────── */
-    uint32_t rx_frame_count;    /* increments every time Modbus writes any register   */
-    uint32_t cmd_dispatch_count;/* increments every time a non-idle command is decoded */
+    /* ── Diagnostics ─────────────────────────────────────────────────────── */
+    uint32_t rx_frame_count;     /* increments each time Modbus writes any reg */
+    uint32_t cmd_decode_count;   /* increments each time a non-idle cmd decoded */
 
-    /* ── Write-back (Robot → PC) ─────────────────────────────────────────── */
-    float    wb_position_rad;        /* robot.theta  [rad]                     */
-    float    wb_velocity_rad_s;      /* robot.omega  [rad/s]                   */
-    uint16_t wb_taskBits;            /* Robot_GetState() mapped to bits        */
-    uint16_t wb_sensorBits;          /* gripper reed-switch states as bitmask  */
-    uint8_t  wb_emergencyActive;     /* 1 when robot is in ESTOP state         */
+    /* ── Write-back (Robot → PC, filled by TaskManager before Task_Run) ─── */
+    float    wb_position_rad;         /* robot.theta  [rad]                    */
+    float    wb_velocity_rad_s;       /* robot.omega  [rad/s]                  */
+    uint16_t wb_taskBits;             /* Robot_GetState() mapped to bits       */
+    uint16_t wb_sensorBits;           /* gripper reed-switch states as bitmask */
+    uint8_t  wb_emergencyActive;      /* 1 when robot is in ESTOP state        */
 
 } BSI_PendingCmd_t;
 
@@ -169,63 +179,35 @@ typedef struct {
     BaseSystemInterface_Data_t data;
     BSI_PendingCmd_t           pending;   /* live-expression debug target */
 
-    /* ── Dispatch state (persists across calls, resets with handle) ──────── */
-    uint16_t latchedOpMode;        /* last non-idle opMode seen by Update()   */
-    /* ── Sequence state machine ─────────────────────────────────────────── */
-    uint8_t  latchedSeqValid;      /* 1 = new sequence command pending        */
-    uint16_t latchedSeqPairs;      /* number of pairs in latched sequence     */
-    int16_t  latchedSeqSlots[16];  /* latched slot values (signed index)      */
-    float    seqSlotsRad[16];      /* converted slot values [rad] for runner  */
+    /* ── Latch / edge-detect state (used by BaseSystem_Interface_Decode) ── */
+    uint16_t latchedOpMode;
+    uint8_t  latchedSeqValid;
+    uint16_t latchedSeqPairs;
+    int16_t  latchedSeqSlots[16];
+    uint8_t  latchedPrecValid;
+    int16_t  latchedPrecInit;
+    int16_t  latchedPrecFinal;
+    uint16_t latchedPrecRepeats;
+    uint8_t  latchedPrecUseIndex;
+    uint8_t  latchedGripperAuto;
+    int16_t  latchedJogDeg;
+    int16_t  latchedP2PTarget;
+    uint16_t latchedP2PUnit;
+    uint8_t  latchedP2PValid;
+    int16_t  prevP2PTarget;
+    uint16_t prevP2PUnit;
+    uint16_t prevGripperCmd;
+    uint16_t prevGripperReg;
+    uint8_t  latchedGripperCmd;
+    uint8_t  latchedGripperSeq;
+    uint8_t  latchedGripperValid;
+    uint16_t prevGripperSeqReg;
+    uint8_t  latchedGripperSeqCmd;
+    uint8_t  latchedGripperSeqValid;
 
-    /* ── Set Home state machine ─────────────────────────────────────────── */
-    uint8_t  setHomeRunning;       /* 1 = set-home sequence in progress       */
-    float    setHomeSavedRad;      /* position to return to after homing      */
-
-    /* ── Precision test state machine ───────────────────────────────────── */
-    uint8_t  latchedPrecValid;     /* 1 = new precision test pending          */
-    int16_t  latchedPrecInit;      /* raw init position from register         */
-    int16_t  latchedPrecFinal;     /* raw final position from register        */
-    uint16_t latchedPrecRepeats;   /* repeat count (magnitude)                */
-    uint8_t  latchedPrecUseIndex;  /* 1 = index unit, 0 = degree unit         */
-    uint8_t  precRunning;          /* 1 = precision test executing            */
-    uint8_t  precGoingToFinal;     /* 1 = moving to final, 0 = back to init   */
-    uint16_t precCurrentRep;       /* completed repeat count                  */
-    uint16_t precTotalReps;        /* total repeats requested                 */
-    float    precInitRad;          /* init position [rad]                     */
-    float    precFinalRad;         /* final position [rad]                    */
-    uint8_t  latchedGripperAuto;   /* gripper auto enable captured with seq   */
-    uint8_t  seqRunning;           /* 1 = sequence is actively executing      */
-    uint16_t seqStep;              /* current step index (0 to steps-1)       */
-    uint16_t seqTotalSteps;        /* total steps = pairs × 2                 */
-
-    /* ── Standalone Pick/Place FSM (completely separate from seqRunning) ── */
-    uint8_t  grpState;             /* GRP_FSM_* state for standalone Pick/Place */
-    uint32_t grpTimer;             /* HAL_GetTick() timestamp for grp FSM     */
-    uint8_t  grpCmd;               /* 1=Pick, 2=Place                         */
-
-    /* ── Sequence gripper state machine ─────────────────────────────────── */
-    uint8_t  seqGripState;         /* 0=idle 1=down 2=action 3=up             */
-    uint32_t seqGripTimer;         /* HAL_GetTick() timestamp for delay       */
-    int16_t  latchedJogDeg;        /* last non-zero jog degrees seen by Update */
-    int16_t  latchedP2PTarget;     /* latched P2P target value                 */
-    uint16_t latchedP2PUnit;       /* latched P2P unit (deg/index)             */
-    uint8_t  latchedP2PValid;      /* 1 = new P2P command pending dispatch     */
-    int16_t  prevP2PTarget;        /* shadow — detect register change          */
-    uint16_t prevP2PUnit;          /* shadow — detect register change          */
-
-    uint16_t prevGripperCmd;       /* edge detection — last gripper command   */
-    uint16_t prevGripperReg;       /* shadow — detect REG_MANUAL_GRIPPER write */
-    uint8_t  latchedGripperCmd;    /* latched gripper action (Up/Down/Open/Close) */
-    uint8_t  latchedGripperSeq;    /* latched gripper sequence (Pick=1/Place=2)   */
-    uint8_t  latchedGripperValid;  /* 1 = new gripper command pending             */
-    uint16_t prevGripperSeqReg;    /* shadow — detect REG_GRIPPER_SEQ write       */
-    uint8_t  latchedGripperSeqCmd; /* latched sequence type (Pick=1 / Place=2)    */
-    uint8_t  latchedGripperSeqValid; /* 1 = new Pick/Place sequence pending       */
-
-    /* ── Dispatch diagnostics ───────────────────────────────────────────── */
-    uint8_t  dbg_modeChanged;      /* 1 on the loop where mode changed        */
-    uint16_t dbg_lastOpMode;       /* last opMode that was actually dispatched */
-    uint32_t dbg_home_call_count;  /* total Robot_Home() calls made           */
+    /* ── Decode diagnostics ─────────────────────────────────────────────── */
+    uint8_t  dbg_modeChanged;
+    uint16_t dbg_lastOpMode;
 } BaseSystemInterface_t;
 
 /* ── Public API ────────────────────────────────────────────────────────────── */
@@ -240,21 +222,24 @@ void BaseSystemInterface_Init(BaseSystemInterface_t *hbs,
                                uint8_t                slaveAddress);
 
 /**
- * @brief  Run Modbus worker + sync register frame ↔ data struct.
+ * @brief  Run Modbus protocol worker + sync register frame → data struct.
  *         Call every main-loop iteration.
  */
 void BaseSystemInterface_Update(BaseSystemInterface_t *hbs);
 
 /**
- * @brief  Decode all commands from hbs->data into hbs->pending and
- *         copy robot state back into hbs->data for register write-back.
+ * @brief  Decode all Modbus registers into hbs->pending.
+ *         No Robot_*() calls are made — TaskManager reads pending and
+ *         dispatches to the Robot API.
  *
- *         Robot commands are NOT issued yet — inspect hbs->pending
- *         (alias: BaseSystem.pending) in the live-expression window.
+ *         Also writes state back into hbs->data so register write-back
+ *         in BaseSystemInterface_Update picks up current robot values.
+ *         The caller (TaskManager / main) must update hbs->data fields
+ *         (realPosition, realVelocity, sensorBits, etc.) before calling
+ *         BaseSystemInterface_Update() each loop.
  *
- * @param  hbs    BaseSystemInterface handle.
- * @param  robot  Robot handle (read-only for write-back; no motion called).
+ * @param  hbs  BaseSystemInterface handle.
  */
-void BaseSystem_Dispatch(BaseSystemInterface_t *hbs, Robot_t *robot);
+void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs);
 
 #endif /* INC_BASESYSTEMINTERFACE_H_ */

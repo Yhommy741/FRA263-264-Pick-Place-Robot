@@ -102,4 +102,12 @@
 #define LIM_SW_PORT             GPIOC
 #define LIM_SW_PIN              GPIO_PIN_2
 
+/* ── Emergency Stop Button (active-low) ──────────────────────────────────── */
+#define ESTOP_PORT              GPIOC
+#define ESTOP_PIN               GPIO_PIN_13
+
+/* ── Mode Switch (active-low: LOW = Manual, HIGH = Auto) ─────────────────── */
+#define MODE_SW_PORT            GPIOB
+#define MODE_SW_PIN             GPIO_PIN_4
+
 #endif /* INC_ROBOTCONFIG_H_ */

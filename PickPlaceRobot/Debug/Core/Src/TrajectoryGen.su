@@ -1,9 +1,0 @@
-../Core/Src/TrajectoryGen.c:73:13:compute_phases	64	static
-../Core/Src/TrajectoryGen.c:134:13:plan_scurve	72	static
-../Core/Src/TrajectoryGen.c:237:6:Trajectory_Init	32	static
-../Core/Src/TrajectoryGen.c:256:7:Trajectory_ComputeTf	48	static
-../Core/Src/TrajectoryGen.c:276:6:Trajectory_SetTargetConstrained	24	static
-../Core/Src/TrajectoryGen.c:290:6:Trajectory_SetTarget	24	static
-../Core/Src/TrajectoryGen.c:305:6:Trajectory_Update	56	static
-../Core/Src/TrajectoryGen.c:383:6:Trajectory_Stop	16	static
-../Core/Src/TrajectoryGen.c:390:6:Trajectory_Reset	32	static
