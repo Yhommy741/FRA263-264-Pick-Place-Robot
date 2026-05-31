@@ -52,7 +52,7 @@
 
 /* ── Control Loop Timing ─────────────────────────────────────────────────── */
 #define CTRL_HTIM_PTR           (&htim3)
-#define CTRL_PERIOD             0.0005f      /* Seconds (1 ms)               */
+#define CTRL_PERIOD             0.0005f      /* Seconds (0.5 ms)               */
 #define CTRL_LOOP_MULTI         10          /* Pos loop = CTRL_PERIOD × 10  */
 
 /* ── PID Controller Gains ────────────────────────────────────────────────── */

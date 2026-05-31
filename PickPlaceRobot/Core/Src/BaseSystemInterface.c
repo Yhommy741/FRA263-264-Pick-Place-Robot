@@ -48,7 +48,8 @@ void BaseSystemInterface_Init(BaseSystemInterface_t *hbs,
      * treats 0x8000 as -32768 which is not a valid target angle).
      * Setting prevP2PTarget to INT16_MIN guarantees the very first write —
      * including target = 0 degrees / index 0 — triggers the P2P latch.     */
-    hbs->prevP2PTarget = INT16_MIN;
+    hbs->prevP2PTarget    = INT16_MIN;
+    hbs->prevGripperAutoReg = 0xFF;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -122,17 +123,38 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
     }
 
     /* ── Latch: Sequence ─────────────────────────────────────────────────── *
-     * REG_GRIPPER_AUTO_EN is captured HERE together with the sequence slots  *
-     * so the entire command is atomic — no race between latch and decode.    *
-     * Section D reads hbs->latchedGripperAuto, NOT the live register.        */
-    if (rf[REG_SEQ_PAIRS].U16 != 0 && !hbs->latchedSeqValid)
+     * Modbus_Protocol_Worker() processes ONE frame per Update() call.        *
+     * REG_SEQ_PAIRS and REG_GRIPPER_AUTO_EN always arrive in separate calls. *
+     * Step 1: stage slots when REG_SEQ_PAIRS arrives, set seqPending.        *
+     * Step 2: fire latch when REG_GRIPPER_AUTO_EN arrives (next Update call).*
+     * prevGripperAutoReg is only updated when NOT pending so the sentinel    *
+     * 0xFF survives until the checkbox write comes.                          */
+    if (rf[REG_SEQ_PAIRS].U16 != 0 && !hbs->latchedSeqValid && !hbs->seqPending)
     {
-        hbs->latchedSeqPairs    = rf[REG_SEQ_PAIRS].U16;
-        hbs->latchedGripperAuto = (uint8_t)(rf[REG_GRIPPER_AUTO_EN].U16 & 0x01);
+        hbs->latchedSeqPairs = rf[REG_SEQ_PAIRS].U16;
         for (int i = 0; i < 16; i++)
             hbs->latchedSeqSlots[i] = (int16_t)rf[REG_SEQ_START + i].U16;
         rf[REG_SEQ_PAIRS].U16 = 0; data->sequencePairs = 0;
-        hbs->latchedSeqValid = 1;
+        hbs->seqPending = 1;
+        /* prevGripperAutoReg already 0xFF from init/last-commit — do NOT touch */
+    }
+
+    if (hbs->seqPending && !hbs->latchedSeqValid)
+    {
+        uint16_t curAuto = rf[REG_GRIPPER_AUTO_EN].U16;
+        if (curAuto != hbs->prevGripperAutoReg)  /* 0xFF != 0 or 1 → always fires */
+        {
+            hbs->latchedGripperAuto = (uint8_t)(curAuto & 0x01);
+            hbs->latchedSeqValid    = 1;
+            hbs->seqPending         = 0;
+            hbs->prevGripperAutoReg = 0xFF;  /* reset sentinel for next run */
+        }
+        /* else: checkbox not yet received — stay pending, wait next Update */
+    }
+    else if (!hbs->seqPending)
+    {
+        /* Not pending — track live value so it stays current between runs */
+        hbs->prevGripperAutoReg = rf[REG_GRIPPER_AUTO_EN].U16;
     }
 
     /* ── Latch: Gripper Pick/Place sequence ──────────────────────────────── */

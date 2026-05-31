@@ -190,6 +190,8 @@ typedef struct {
     uint16_t latchedPrecRepeats;
     uint8_t  latchedPrecUseIndex;
     uint8_t  latchedGripperAuto;
+    uint8_t  seqPending;
+    uint16_t prevGripperAutoReg;
     int16_t  latchedJogDeg;
     int16_t  latchedP2PTarget;
     uint16_t latchedP2PUnit;
