@@ -56,13 +56,13 @@
 #define CTRL_LOOP_MULTI         10          /* Pos loop = CTRL_PERIOD × 10  */
 
 /* ── PID Controller Gains ────────────────────────────────────────────────── */
-#define KP_VEL                  5.0f
-#define KI_VEL                  2.0f
-#define KD_VEL                  0.0f
+#define KP_VEL                  1.5f
+#define KI_VEL                  40.0f
+#define KD_VEL                  0.0005f
 
-#define KP_POS                  0.5f
-#define KI_POS                  0.0f
-#define KD_POS                  0.01f
+#define KP_POS                  3.5f
+#define KI_POS                  2.0f
+#define KD_POS                  0.0f
 
 /* ── Motor Driver MD20A ──────────────────────────────────────────────────── */
 #define MDRV_HTIM_PTR           (&htim2)
@@ -96,7 +96,7 @@
 /* ── Gripper Sensors Time Delay ────────────────────────────────────────────── */
 
 #define GRP_WAIT_TIME			500
-#define GRP_WAIT_PENDULUM_TIME  1800
+#define GRP_WAIT_PENDULUM_TIME  2500
 
 /* ── Limit Switch ────────────────────────────────────────────────────────── */
 #define LIM_SW_PORT             GPIOC

@@ -340,49 +340,57 @@ void Task_PostFromJoystick(TaskManager_t *tm, JoystickInterface_t *joy)
 
     switch (cmd)
     {
-        case JOY_CMD_JOG_STEP_CW:
-            e.id = TASK_EVT_JOG_STEP;
-            e.arg_f = -(data);   /* CW = negative */
-            break;
-        case JOY_CMD_JOG_STEP_CCW:
-            e.id = TASK_EVT_JOG_STEP;
-            e.arg_f = (data);
-            break;
-        case JOY_CMD_JOG_VEL_CW:
-            e.id = TASK_EVT_JOG_VEL;
-            e.arg_f = -(data);
-            break;
-        case JOY_CMD_JOG_VEL_CCW:
-            e.id = TASK_EVT_JOG_VEL;
-            e.arg_f = (data);
+        case JOY_CMD_MOVE:
+            e.id    = TASK_EVT_MOVE;
+            e.arg_f = data;          /* target position [rad] */
             break;
         case JOY_CMD_STOP:
-            e.id = TASK_EVT_STOP;
+            e.id    = TASK_EVT_STOP;
             e.arg_f = 0.0f;
+            break;
+        case JOY_CMD_SET_HOME:
+            e.id    = TASK_EVT_SET_HOME;
+            e.arg_f = data;          /* new home offset [rad] */
             break;
         case JOY_CMD_HOME:
-            e.id = TASK_EVT_HOME;
+            e.id    = TASK_EVT_HOME;
             e.arg_f = 0.0f;
+            break;
+        case JOY_CMD_JOG_VEL_CCW:
+            e.id    = TASK_EVT_JOG_VEL;
+            e.arg_f = fabsf(data);   /* CCW = positive */
+            break;
+        case JOY_CMD_JOG_VEL_CW:
+            e.id    = TASK_EVT_JOG_VEL;
+            e.arg_f = -fabsf(data);  /* CW  = negative */
+            break;
+        case JOY_CMD_JOG_STEP_CCW:
+            e.id    = TASK_EVT_JOG_STEP;
+            e.arg_f = fabsf(data);
+            break;
+        case JOY_CMD_JOG_STEP_CW:
+            e.id    = TASK_EVT_JOG_STEP;
+            e.arg_f = -fabsf(data);
             break;
         case JOY_CMD_GRP_UP:
-            e.id = TASK_EVT_GRIPPER_MANUAL;
+            e.id    = TASK_EVT_GRIPPER_MANUAL;
             e.arg_u8 = GRP_CMD_UP;
-            e.arg_f = 0.0f;
+            e.arg_f  = 0.0f;
             break;
         case JOY_CMD_GRP_DOWN:
-            e.id = TASK_EVT_GRIPPER_MANUAL;
+            e.id    = TASK_EVT_GRIPPER_MANUAL;
             e.arg_u8 = GRP_CMD_DOWN;
-            e.arg_f = 0.0f;
-            break;
-        case JOY_CMD_GRP_OPEN:
-            e.id = TASK_EVT_GRIPPER_MANUAL;
-            e.arg_u8 = GRP_CMD_OPEN;
-            e.arg_f = 0.0f;
+            e.arg_f  = 0.0f;
             break;
         case JOY_CMD_GRP_CLOSE:
-            e.id = TASK_EVT_GRIPPER_MANUAL;
+            e.id    = TASK_EVT_GRIPPER_MANUAL;
             e.arg_u8 = GRP_CMD_CLOSE;
-            e.arg_f = 0.0f;
+            e.arg_f  = 0.0f;
+            break;
+        case JOY_CMD_GRP_OPEN:
+            e.id    = TASK_EVT_GRIPPER_MANUAL;
+            e.arg_u8 = GRP_CMD_OPEN;
+            e.arg_f  = 0.0f;
             break;
         default:
             return;   /* unknown command — ignore */
@@ -561,9 +569,7 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
         tm->grp.seqGripState     = GRP_FSM_IDLE;
         tm->activeTask           = TASK_EVT_NONE;
 
-        Robot_EStop(robot);          /* immediate motor cut — no decel ramp */
-
-        tm->sysHardStopRequested = 1;  /* signal main.c → SYS_STATE_SOFT_ESTOP */
+        Robot_Stop(robot);           /* stop trajectory, hold position, → ROBOT_IDLE */
         tm->dbg_eventsRun++;
         return;
     }
@@ -721,18 +727,12 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
             tm->activeTask           = TASK_EVT_NONE;
             _queue_flush(tm);
 
-            /* ── 2. Hard motor cut — same as physical E-Stop ─────────── *
-             * Robot_EStop() kills PWM output immediately (no decel ramp), *
-             * resets PID integrals, and locks robot into ROBOT_ESTOP.     *
-             * The robot will NOT respond to any further motion commands.   */
-            Robot_EStop(robot);
-
-            /* ── 3. Lock the system — hardware reset required to recover ─ *
-             * sysHardStopRequested signals main.c to enter SYS_STATE_ESTOP *
-             * via the software path. Unlike the physical E-stop button,     *
-             * there is NO software exit from this state — only an MCU       *
-             * power cycle or reset button will restart the system.          */
-            tm->sysHardStopRequested = 1;
+            /* ── 2. Soft stop — hold position, robot stays operational ── *
+             * Robot_Stop() stops the trajectory, sets theta_target to the  *
+             * current position (holds in place), resets PID integrals, and *
+             * transitions to ROBOT_IDLE. The next motion command (jog,      *
+             * move, home) is accepted immediately. Motor is NOT cut.        */
+            Robot_Stop(robot);
             break;
 
         /* ── Motion ──────────────────────────────────────────────────── */

@@ -62,17 +62,20 @@ typedef enum {
 /* ── Joystick command byte definitions ───────────────────────────────────── *
  *  These must match whatever the joystick firmware transmits as cmd byte [0]. *
  * ─────────────────────────────────────────────────────────────────────────── */
+/* JOY_CMD_* — matches StateMachine.cpp protocol spec */
 #define JOY_CMD_NONE         0x00
-#define JOY_CMD_JOG_STEP_CW  0x01   /* arg = step magnitude [rad]  */
-#define JOY_CMD_JOG_STEP_CCW 0x02   /* arg = step magnitude [rad]  */
-#define JOY_CMD_JOG_VEL_CW   0x03   /* arg = speed [rad/s]         */
-#define JOY_CMD_JOG_VEL_CCW  0x04   /* arg = speed [rad/s]         */
-#define JOY_CMD_STOP         0x05
-#define JOY_CMD_HOME         0x06
-#define JOY_CMD_GRP_UP       0x10
-#define JOY_CMD_GRP_DOWN     0x11
-#define JOY_CMD_GRP_OPEN     0x12
-#define JOY_CMD_GRP_CLOSE    0x13
+#define JOY_CMD_MOVE         0x01
+#define JOY_CMD_STOP         0x02
+#define JOY_CMD_SET_HOME     0x04
+#define JOY_CMD_HOME         0x05
+#define JOY_CMD_JOG_VEL_CCW  0x06
+#define JOY_CMD_JOG_VEL_CW   0x07
+#define JOY_CMD_JOG_STEP_CCW 0x08
+#define JOY_CMD_JOG_STEP_CW  0x09
+#define JOY_CMD_GRP_UP       0x0A
+#define JOY_CMD_GRP_DOWN     0x0B
+#define JOY_CMD_GRP_CLOSE    0x0C
+#define JOY_CMD_GRP_OPEN     0x0D
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  TaskEvent_t  — one entry in the FIFO queue

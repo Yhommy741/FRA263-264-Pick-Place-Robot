@@ -2,6 +2,6 @@
 ../Core/Src/JoystickInterface.c:13:6:JoystickInterface_Set_TxMode	16	static
 ../Core/Src/JoystickInterface.c:30:6:JoystickInterface_Init	24	static
 ../Core/Src/JoystickInterface.c:49:6:JoystickInterface_RxCpltCallback	16	static
-../Core/Src/JoystickInterface.c:60:9:JoystickInterface_Update	24	static,ignoring_inline_asm
-../Core/Src/JoystickInterface.c:83:9:JoystickInterface_Get_Command	16	static
-../Core/Src/JoystickInterface.c:89:9:JoystickInterface_Get_Data	16	static
+../Core/Src/JoystickInterface.c:58:9:JoystickInterface_Update	24	static,ignoring_inline_asm
+../Core/Src/JoystickInterface.c:97:9:JoystickInterface_Get_Command	16	static
+../Core/Src/JoystickInterface.c:103:9:JoystickInterface_Get_Data	16	static

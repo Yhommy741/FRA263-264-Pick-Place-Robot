@@ -9,6 +9,6 @@
 ../Core/Src/TaskManager.c:172:9:Task_PostEvent	32	static
 ../Core/Src/TaskManager.c:193:6:Task_PostFromModbus	160	static
 ../Core/Src/TaskManager.c:330:6:Task_PostFromJoystick	40	static
-../Core/Src/TaskManager.c:401:13:_gripper_seq_tick	16	static
-../Core/Src/TaskManager.c:450:13:_seq_grip_tick	24	static
-../Core/Src/TaskManager.c:523:6:Task_Run	56	static,ignoring_inline_asm
+../Core/Src/TaskManager.c:409:13:_gripper_seq_tick	16	static
+../Core/Src/TaskManager.c:458:13:_seq_grip_tick	24	static
+../Core/Src/TaskManager.c:531:6:Task_Run	56	static,ignoring_inline_asm

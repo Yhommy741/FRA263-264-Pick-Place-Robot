@@ -52,9 +52,7 @@ void JoystickInterface_RxCpltCallback(JoystickInterface_t *joy, UART_HandleTypeD
     if (huart != joy->huart) return;
 
     joy->isr_flag = 1;
-
-    /* Keep the device listening in RX mode, re-arm for upcoming transmissions */
-    HAL_UART_Receive_IT(joy->huart, (uint8_t *)joy->rx_buf, JOY_FRAME_LEN);
+    /* Re-arm handled in JoystickInterface_Update after sync validation */
 }
 
 uint8_t JoystickInterface_Update(JoystickInterface_t *joy)
@@ -66,15 +64,31 @@ uint8_t JoystickInterface_Update(JoystickInterface_t *joy)
         __disable_irq();
         joy->isr_flag = 0;
 
-        uint8_t temp_cmd = joy->rx_buf[0];
-        float temp_data;
-        memcpy(&temp_data, (const uint8_t *)&joy->rx_buf[1], sizeof(float));
+        /* Find sync byte 0xAA at position 0 — ensures frame alignment */
+        uint8_t temp_cmd   = 0;
+        float   temp_data  = 0.0f;
+        uint8_t valid      = 0;
+
+        if (joy->rx_buf[0] == JOY_SYNC_BYTE)
+        {
+            temp_cmd = joy->rx_buf[1];
+            memcpy(&temp_data, (const uint8_t *)&joy->rx_buf[2], sizeof(float));
+            valid = 1;
+        }
         __enable_irq();
 
-        joy->parsed_cmd  = temp_cmd;
-        joy->parsed_data = temp_data;
+        /* Re-arm for next frame */
+        HAL_UART_Receive_IT(joy->huart, (uint8_t *)joy->rx_buf, JOY_FRAME_LEN);
 
-        return 1;
+        if (valid)
+        {
+            joy->dbg_last_raw_cmd  = temp_cmd;
+            joy->dbg_last_raw_data = temp_data;
+            joy->dbg_frame_count++;
+            joy->parsed_cmd  = temp_cmd;
+            joy->parsed_data = temp_data;
+            return 1;
+        }
     }
 
     return 0;
