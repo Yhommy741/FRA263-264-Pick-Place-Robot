@@ -55,13 +55,16 @@
 #define CTRL_PERIOD             0.0005f      /* Seconds (0.5 ms)               */
 #define CTRL_LOOP_MULTI         10          /* Pos loop = CTRL_PERIOD × 10  */
 
+/* ── Position Deadband ───────────────────────────────────────────────────── *  */
+#define CTRL_POS_DEADBAND_RAD       0.001745f   /* rad           */
+
 /* ── PID Controller Gains ────────────────────────────────────────────────── */
 #define KP_VEL                  1.5f
 #define KI_VEL                  40.0f
 #define KD_VEL                  0.0005f
 
-#define KP_POS                  3.5f
-#define KI_POS                  2.0f
+#define KP_POS                  4.0f
+#define KI_POS                  0.0f
 #define KD_POS                  0.0f
 
 /* ── Motor Driver MD20A ──────────────────────────────────────────────────── */
@@ -72,16 +75,16 @@
 
 /* ── Gripper Actuators (Outputs) ─────────────────────────────────────────── */
 #define GRP_UP_PORT_OUT         GPIOC
-#define GRP_UP_PIN_OUT          GPIO_PIN_6
+#define GRP_UP_PIN_OUT          GPIO_PIN_1
 
 #define GRP_DOWN_PORT_OUT       GPIOC
-#define GRP_DOWN_PIN_OUT        GPIO_PIN_1
+#define GRP_DOWN_PIN_OUT        GPIO_PIN_6
 
 #define GRP_OPEN_PORT_OUT       GPIOC
-#define GRP_OPEN_PIN_OUT        GPIO_PIN_3
+#define GRP_OPEN_PIN_OUT        GPIO_PIN_0
 
 #define GRP_CLOSE_PORT_OUT      GPIOC
-#define GRP_CLOSE_PIN_OUT       GPIO_PIN_0
+#define GRP_CLOSE_PIN_OUT       GPIO_PIN_3
 
 /* ── Gripper Sensors (Inputs) ────────────────────────────────────────────── */
 #define GRP_UP_PORT_IN          GPIOB
@@ -93,10 +96,24 @@
 #define GRP_CLAW_PORT_IN        GPIOB
 #define GRP_CLAW_PIN_IN         GPIO_PIN_2
 
-/* ── Gripper Sensors Time Delay ────────────────────────────────────────────── */
-
-#define GRP_WAIT_TIME			500
+/* ── Gripper Sensors Time Delay ─────────────────────────────────────────────── */
+#define GRP_WAIT_TIME           500
 #define GRP_WAIT_PENDULUM_TIME  2500
+
+/* ── Gripper Mode Selection ──────────────────────────────────────────────────
+ * ─────────────────────────────────────────────────────────────────────────── */
+#include "Gripper.h"            /* GripperMode_t — must precede GRP_MODE define */
+
+#define GRP_MODE                GRP_MODE_IO   /* GRP_MODE_IO or GRP_MODE_CANBUS */
+
+/* ── CAN Bus Configuration ───────────────────────────────────────────────────
+ * Used only when GRP_MODE == GRP_MODE_CANBUS.
+ * fdcan.h provides extern hfdcan1 used by CAN_HFDCAN_PTR.
+ * ─────────────────────────────────────────────────────────────────────────── */
+#include "fdcan.h"              /* extern FDCAN_HandleTypeDef hfdcan1          */
+
+#define CAN_HFDCAN_PTR          (&hfdcan1)  /* HAL FDCAN handle pointer        */
+#define CAN_NODE_ID             0x10u       /* Target gripper node ID          */
 
 /* ── Limit Switch ────────────────────────────────────────────────────────── */
 #define LIM_SW_PORT             GPIOC

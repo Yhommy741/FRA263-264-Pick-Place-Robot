@@ -16,6 +16,7 @@
 #include "Controller.h"
 #include "SCurve.h"        /* 7-segment S-curve — replaces TrajectoryGen.h    */
 #include "Trapezoid.h"     /* 3-phase trapezoidal — performance test          */
+#include "CANBus.h"        /* CAN protocol driver (v1.0.1)                    */
 #include "Gripper.h"
 
 /* ── States ──────────────────────────────────────────────────────────────── */
@@ -41,6 +42,8 @@ typedef struct {
     Controller_t            ctr;
     SCurve_t                scurve;   /* normal moves          */
     Trapezoid_t             trap;     /* performance test      */
+    CANBus_t                can_bus;  /* CAN driver (used when GRP_MODE==CANBUS) */
+    uint8_t                 can_node_init_done; /* 1 = initial relay state sent  */
     Gripper_t               gripper;
 
     TIM_HandleTypeDef *htim_ctrl;
@@ -120,6 +123,7 @@ GripperState_t Robot_Gripper_GetDownState(Robot_t *robot);
 GripperState_t Robot_Gripper_GetClawState(Robot_t *robot);
 
 void Robot_Update       (Robot_t *robot, TIM_HandleTypeDef *htim);
+void Robot_CANBus_Update(Robot_t *robot);   /* Call from main loop — NOT from ISR */
 void Robot_EXTI_Callback(Robot_t *robot, uint16_t GPIO_Pin);
 
 float         Robot_GetPosition    (const Robot_t *robot);

@@ -6,6 +6,7 @@
  */
 
 #include "Robot.h"
+#include "CANBus.h"
 #include <string.h>
 #include <math.h>
 
@@ -63,7 +64,8 @@ void Robot_Init(Robot_t *robot)
                     KP_VEL, KI_VEL, KD_VEL,
                     KP_POS, KI_POS, KD_POS,
                     CTRL_PERIOD, CTRL_LOOP_MULTI,
-                    RBT_MAX_SPEED * SPEED_RATIO, MOTOR_V_MAX);
+                    RBT_MAX_SPEED * SPEED_RATIO, MOTOR_V_MAX,
+                    CTRL_POS_DEADBAND_RAD);
     robot->ctr.ControlMode = CTRL_MODE_CASCADE_FF_ALL;
 
     SCurve_Init(&robot->scurve,
@@ -74,14 +76,26 @@ void Robot_Init(Robot_t *robot)
                    CTRL_PERIOD * CTRL_LOOP_MULTI,
                    RBT_MAX_SPEED, RBT_MAX_ACCEL);
 
-    Gripper_Init(&robot->gripper,
-                 GRP_UP_PORT_OUT,    GRP_UP_PIN_OUT,
-                 GRP_DOWN_PORT_OUT,  GRP_DOWN_PIN_OUT,
-                 GRP_OPEN_PORT_OUT,  GRP_OPEN_PIN_OUT,
-                 GRP_CLOSE_PORT_OUT, GRP_CLOSE_PIN_OUT,
-                 GRP_UP_PORT_IN,     GRP_UP_PIN_IN,
-                 GRP_DOWN_PORT_IN,   GRP_DOWN_PIN_IN,
-                 GRP_CLAW_PORT_IN,   GRP_CLAW_PIN_IN);
+    /* ── Gripper: mode selected by GRP_MODE in RobotConfig.h ───────────────── */
+    if (GRP_MODE == GRP_MODE_CANBUS)
+    {
+        CANBus_Init(&robot->can_bus, CAN_HFDCAN_PTR, CAN_NODE_ID);
+        Gripper_Init_CAN(&robot->gripper, &robot->can_bus,
+                         GRP_UP_PORT_IN,   GRP_UP_PIN_IN,
+                         GRP_DOWN_PORT_IN, GRP_DOWN_PIN_IN,
+                         GRP_CLAW_PORT_IN, GRP_CLAW_PIN_IN);
+    }
+    else
+    {
+        Gripper_Init_IO(&robot->gripper,
+                        GRP_UP_PORT_OUT,    GRP_UP_PIN_OUT,
+                        GRP_DOWN_PORT_OUT,  GRP_DOWN_PIN_OUT,
+                        GRP_OPEN_PORT_OUT,  GRP_OPEN_PIN_OUT,
+                        GRP_CLOSE_PORT_OUT, GRP_CLOSE_PIN_OUT,
+                        GRP_UP_PORT_IN,     GRP_UP_PIN_IN,
+                        GRP_DOWN_PORT_IN,   GRP_DOWN_PIN_IN,
+                        GRP_CLAW_PORT_IN,   GRP_CLAW_PIN_IN);
+    }
 
     set_state(robot, ROBOT_IDLE, 0);
 }
@@ -114,6 +128,7 @@ void Robot_SoftReset(Robot_t *robot)
     DCMotor_t              motor       = robot->motor;
     KalmanFilterDCMotor_t  kalman      = robot->kalman;
     Controller_t           ctr         = robot->ctr;
+    CANBus_t               can_bus     = robot->can_bus;
     Gripper_t              gripper     = robot->gripper;
 
     /* Compute current position BEFORE memset so theta_target is correct */
@@ -139,6 +154,7 @@ void Robot_SoftReset(Robot_t *robot)
     robot->motor       = motor;
     robot->kalman      = kalman;
     robot->ctr         = ctr;
+    robot->can_bus     = can_bus;
     robot->gripper     = gripper;
 
     /* Set targets safely to current location */
@@ -465,8 +481,38 @@ void Robot_Update(Robot_t *robot, TIM_HandleTypeDef *htim)
     robot->u_prev = u_total;
     MD20A_setSpeed(&robot->driver, (u_total / robot->V_max) * 100.0f);
 
-    /* ── 5. Gripper ──────────────────────────────────────────────────────── */
-    Gripper_Update(&robot->gripper);
+    /* ── 5. Gripper pulse timer (IO mode only in ISR) ────────────────────── *
+     * CAN mode Gripper_Update calls CANBus_WriteRelays which is not ISR-safe. *
+     * CAN mode pulse timer is handled in Robot_CANBus_Update (main loop).     */
+    if (GRP_MODE == GRP_MODE_IO)
+        Gripper_Update(&robot->gripper);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Robot_CANBus_Update  — call from main loop ONLY, never from ISR
+ *
+ * Drains the CAN RX FIFO, updates opto_state (gripper sensor bits 4-6),
+ * and sends the periodic Master Heartbeat.  Must be called every main-loop
+ * iteration when GRP_MODE == GRP_MODE_CANBUS.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+void Robot_CANBus_Update(Robot_t *robot)
+{
+    if (robot == NULL) return;
+    if (GRP_MODE != GRP_MODE_CANBUS) return;
+
+    Gripper_Update(&robot->gripper);  /* CAN pulse timer — safe in main loop */
+    CANBus_Update(&robot->can_bus);   /* RX drain + heartbeat TX             */
+
+    /* ── One-shot node initialisation once Operational ───────────────────── *
+     * The node ignores commands while in BOOT state. Once it transitions to  *
+     * Operational (confirmed via Node Heartbeat), send the safe initial state.*
+     * can_node_init_done ensures this only runs once per power cycle.        */
+    if (!robot->can_node_init_done &&
+        robot->can_bus.node_state == CANBUS_NODE_STATE_OPER)
+    {
+        CANBus_WriteRelays(&robot->can_bus, GRP_CAN_RELAY_ALL_OFF);
+        robot->can_node_init_done = 1;
+    }
 }
 
 /* ── Getters ─────────────────────────────────────────────────────────────── */

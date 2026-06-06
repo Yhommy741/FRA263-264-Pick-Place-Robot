@@ -75,6 +75,7 @@ typedef struct {
     uint32_t tick_counter;     /* Managed internally                 */
 
     float    max_omega;        /* Robot Max Velocity * Speed Ratio [rad/s]    */
+    float    pos_deadband;     /* |pos error| below this → output 0, PIDs hold*/
 
     /* Diagnostics (read-only) */
     float u_pid;
@@ -90,7 +91,8 @@ void Controller_Init(Controller_t    *ctrl,
                      float Ts_vel,
                      uint32_t pos_loop_multi,
                      float max_omega,
-                     float V_max);
+                     float V_max,
+                     float pos_deadband);
 
 void Controller_Reset(Controller_t *ctrl);
 

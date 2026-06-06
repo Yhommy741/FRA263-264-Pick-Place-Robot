@@ -6,6 +6,7 @@
  */
 
 #include "Controller.h"
+#include <math.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * PID Implementation
@@ -91,12 +92,14 @@ void Controller_Init(Controller_t    *ctrl,
                      float Ts_vel,
                      uint32_t pos_loop_multi,
                      float max_omega,
-                     float V_max)
+                     float V_max,
+                     float pos_deadband)
 {
     ctrl->ControlMode    = CTRL_MODE_VEL_PID;
     ctrl->pos_loop_multi = (pos_loop_multi > 0U) ? pos_loop_multi : 1U;
     ctrl->tick_counter   = 0U;
-    ctrl->max_omega      = max_omega; // Clamps combined cascade targets
+    ctrl->max_omega      = max_omega;
+    ctrl->pos_deadband   = (pos_deadband > 0.0f) ? pos_deadband : 0.0f;
 
     // Velocity Loop output is bounded by physical Hardware Voltage Limit (V_max)
     PID_Init(&ctrl->pid_vel, Kp_vel, Ki_vel, Kd_vel, Ts_vel, -V_max, V_max);
@@ -128,6 +131,19 @@ float Controller_Update(Controller_t *ctrl,
                         float pos,        float vel,
                         float disturbance)
 {
+    /* Position deadband — coast and hold PID state when close enough */
+    if (ctrl->pos_deadband > 0.0f &&
+        fabsf(target_pos - pos) < ctrl->pos_deadband)
+    {
+        PID_Reset(&ctrl->pid_vel);
+        PID_Reset(&ctrl->pid_pos);
+        ctrl->omega_cmd = 0.0f;
+        ctrl->u_pid     = 0.0f;
+        ctrl->u_ff      = 0.0f;
+        ctrl->u_total   = 0.0f;
+        return 0.0f;
+    }
+
     float u     = 0.0f;
     float u_pid = 0.0f;
     float u_ff  = 0.0f;

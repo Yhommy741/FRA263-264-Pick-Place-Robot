@@ -1,0 +1,9 @@
+../Core/Src/CANBUS.c:37:13:priv_fill_txheader	1
+../Core/Src/CANBUS.c:54:19:CANBus_Init	6
+../Core/Src/CANBUS.c:120:6:CANBus_RegisterCallbacks	2
+../Core/Src/CANBUS.c:136:13:priv_dispatch	15
+../Core/Src/CANBUS.c:203:6:CANBus_Update	6
+../Core/Src/CANBUS.c:243:19:CANBus_SendHeartbeat	3
+../Core/Src/CANBUS.c:266:19:CANBus_WriteRelays	2
+../Core/Src/CANBUS.c:289:19:CANBus_ReadOptos	2
+../Core/Src/CANBUS.c:309:19:CANBus_WriteConfig	2
