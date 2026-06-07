@@ -19,7 +19,6 @@
 9. [Configuration Reference](#9-configuration-reference)
 10. [Building & Flashing](#10-building--flashing)
 11. [Debugging Tips](#11-debugging-tips)
-12. [File Tree](#12-file-tree)
 
 ---
 
