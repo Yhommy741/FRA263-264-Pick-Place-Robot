@@ -3,6 +3,10 @@
  *
  * Created on: Apr 11, 2026
  * Author: Yhommy
+ *
+ * Quadrature encoder interface driver.
+ * Supports ×1, ×2, ×4 resolution modes.
+ * Computes angular position (rad) and velocity (rad/s) each tick.
  */
 
 #include "QEI.h"

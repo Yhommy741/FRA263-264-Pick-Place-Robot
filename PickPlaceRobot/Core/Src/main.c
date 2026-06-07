@@ -1,43 +1,23 @@
 /* USER CODE BEGIN Header */
-/**
- ******************************************************************************
- * @file    main.c
- * @brief   Robot library — RobotConfig.h driven, Gripper integrated
+/*
+ * main.c
  *
- * System State Machine:
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ┌─────────────────────────────────────────────────────────────┐
- * │                     SYS_STATE_ESTOP                         │
- * │  Motor cut, heartbeat only, no commands accepted            │
- * └───────────────┬─────────────────────────────────────────────┘
- * E-Stop    │ released → SYS_STATE_RESET
- * pressed   │
- * ┌───────────────▼─────────────────────────────────────────────┐
- * │                     SYS_STATE_RESET                         │
- * │  Re-init all subsystems, then transition to AUTO or MANUAL  │
- * └───────────────┬─────────────────────────────────────────────┘
- * │ immediately
- * ┌──────────▼──────────┐
- * │                     │  Mode_State pin
- * ▼                     ▼
- * SYS_STATE_AUTO       SYS_STATE_MANUAL
- * Modbus cmds only     Joystick cmds only
- * (heartbeat + data    (heartbeat + data
- * to PC always)        to PC always)
- * │                     │
- * └──────┬──────────────┘
- * │ Mode_State pin changes → switch between AUTO/MANUAL
- * │ E-Stop pressed    → SYS_STATE_ESTOP
- * │ REG_SOFT_STOP=1   → SYS_STATE_SOFT_ESTOP
+ * Application entry point — system state machine and main loop.
+ * All hardware configuration is sourced from RobotConfig.h.
  *
- * ┌─────────────────────────────────────────────────────────────┐
- * │                  SYS_STATE_SOFT_ESTOP                       │
- * │  Motor cut, heartbeat only, NO exit — hardware reset only   │
- * └─────────────────────────────────────────────────────────────┘
+ * System States:
+ *   SYS_STATE_AUTO       — Modbus commands accepted (Mode pin HIGH)
+ *   SYS_STATE_MANUAL     — Joystick commands accepted (Mode pin LOW)
+ *   SYS_STATE_ESTOP      — Motor cut; re-inits on button release → RESET
+ *   SYS_STATE_RESET      — One-shot re-init, then back to AUTO or MANUAL
+ *   SYS_STATE_SOFT_ESTOP — Motor cut via REG_SOFT_STOP; hardware reset only
  *
- * Emergency_State = 1  →  button pressed  (active-low PC13, inverted)
- * Mode_State      = 1  →  manual mode     (active-low PB4,  inverted)
- ******************************************************************************
+ * Pin logic (active-low, inverted in firmware):
+ *   Emergency_State = 1  →  E-Stop pressed   (PC13)
+ *   Mode_State      = 1  →  Manual mode       (PB4)
  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/

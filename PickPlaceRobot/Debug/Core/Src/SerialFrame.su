@@ -1,5 +1,5 @@
-../Core/Src/SerialFrame.c:26:6:SerialFrame_Init	24	static
-../Core/Src/SerialFrame.c:57:5:SerialFrame_Add_TX	32	static
-../Core/Src/SerialFrame.c:85:5:SerialFrame_Add_RX	32	static
-../Core/Src/SerialFrame.c:116:6:SerialFrame_Transmit	24	static
-../Core/Src/SerialFrame.c:144:6:SerialFrame_Receive	24	static
+../Core/Src/SerialFrame.c:30:6:SerialFrame_Init	24	static
+../Core/Src/SerialFrame.c:61:5:SerialFrame_Add_TX	32	static
+../Core/Src/SerialFrame.c:89:5:SerialFrame_Add_RX	32	static
+../Core/Src/SerialFrame.c:120:6:SerialFrame_Transmit	24	static
+../Core/Src/SerialFrame.c:148:6:SerialFrame_Receive	24	static

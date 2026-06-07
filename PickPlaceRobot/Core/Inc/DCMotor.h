@@ -1,22 +1,12 @@
 /*
  * DCMotor.h
  *
- *  Created: May 2026
- *  Author : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ═══════════════════════════════════════════════════════════════════════════
- *  DC Motor Parameter Struct
- *
- *  Single source of truth for all motor physical parameters.
- *  Both KalmanFilterDCMotor and Robot read from this struct —
- *  change the values here once and all subsystems update automatically.
- *
- *  Electrical model:
- *    V = Rm·I + Lm·(dI/dt) + Ke·ω
- *
- *  Mechanical model:
- *    J·(dω/dt) = Kt·I − b·ω − τ_d
- * ═══════════════════════════════════════════════════════════════════════════
+ * DC motor physical parameter struct.
+ * Electrical model : V = Rm·I + Lm·(dI/dt) + Ke·ω
+ * Mechanical model : J·(dω/dt) = Kt·I − b·ω − τ_d
  */
 
 #ifndef INC_DCMOTOR_H_

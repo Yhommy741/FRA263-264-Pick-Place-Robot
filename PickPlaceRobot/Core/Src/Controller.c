@@ -1,8 +1,12 @@
 /*
  * Controller.c
  *
- * Created : May 2026
- * Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * PID velocity and position controller implementation.
+ * Cascaded loop: outer position PID feeds inner velocity PID.
+ * Anti-windup via integrator clamp.
  */
 
 #include "Controller.h"

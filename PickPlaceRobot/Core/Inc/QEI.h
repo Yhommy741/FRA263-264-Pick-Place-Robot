@@ -2,7 +2,11 @@
  * QEI.h
  *
  * Created on: Apr 11, 2026
- * Author: Yhommy / Updated by Gemini
+ * Author: Yhommy
+ *
+ * Quadrature encoder interface driver header.
+ * PPR × X mode → CPR counts per revolution.
+ * Outputs position in radians and velocity in rad/s.
  */
 
 #ifndef QEI_H_

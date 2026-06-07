@@ -1,3 +1,14 @@
+/*
+ * JoystickInterface.c
+ *
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * Joystick RS-485 UART driver implementation.
+ * Parses 6-byte binary frames (0xAA sync, DMA RX) from USART3.
+ * Outputs JoystickCmd_t consumed by TaskManager.
+ */
+
 #include "JoystickInterface.h"
 #include <string.h>
 

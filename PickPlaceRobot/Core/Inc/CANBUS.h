@@ -1,33 +1,12 @@
 /*
- * CANBus.h
+ * CANBUS.h
  *
- * Created : June 2026
- * Author  : FRA263/264 Group 5
+ * Created on: June 2026
+ * Author: Yhommy
  *
  * Low-level CAN bus driver for the custom protocol (v1.0.1).
- *
- * Implements:
- *   - 11-bit ID encoding  : MAKE_CAN_ID(funcCode, nodeID)
- *   - RX filter setup     : accept responses from a specific Node ID
- *   - TX helpers          : Command Request, Config Request, Heartbeat
- *   - RX polling          : CANBus_Poll() — call every main-loop iteration
- *   - NMT watchdog        : Master must call CANBus_SendHeartbeat() every ≤500 ms
- *   - Callback hooks      : register handlers for Command Response, Config
- *                           Response, Real-Time Data, EMCY, and Node Heartbeat
- *
- * Protocol ID structure (11 bits):
- *   Bits [10:8] = Function Code (3 bits)
- *   Bits  [7:0] = Node ID       (8 bits)
- *
- * Function Code Map:
- *   0x0  EMCY              Node → Master   (highest priority)
- *   0x1  Real-Time Data    Node → Master
- *   0x2  Command Request   Master → Node
- *   0x3  Command Response  Node → Master
- *   0x4  Config Request    Master → Node
- *   0x5  Config Response   Node → Master
- *   0x6  Master Heartbeat  Broadcast 0x600
- *   0x7  Node Heartbeat    Node → Master   (lowest priority)
+ * Covers ID encoding, RX filter setup, TX helpers, RX polling,
+ * NMT watchdog, and callback hook registration.
  */
 
 #ifndef INC_CANBUS_H_

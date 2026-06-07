@@ -1,37 +1,12 @@
 /*
  * Trapezoid.h
  *
- *  Created : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ═══════════════════════════════════════════════════════════════════════════
- *  3-Phase Trapezoidal Trajectory Generator  (position-triggered)
- *
- *  Velocity profile shape:
- *
- *  TRAPEZOIDAL (v²/a ≤ stroke):          TRIANGULAR (v²/a > stroke):
- *
- *   vel                                   vel
- *    ^  _________                          ^    /\
- *    | /         \                         |   /  \
- *    |/           \                        |  /    \
- *    +--+-------+--+-> pos                 +-+------+-> pos
- *    0  s_a   s-s_d s                      0  s/2   s
- *
- *  Phase transitions are POSITION-triggered (not time-triggered):
- *    Phase 1 (ACCEL):  commanded accel = +a,  until dist >= s_accel
- *    Phase 2 (CRUISE): commanded vel   = v,   until remaining <= s_decel
- *    Phase 3 (DECEL):  commanded accel = -a,  until dist >= stroke
- *    Phase 4 (DONE):   omega_ref = 0,  active = 0
- *
- *  Using position triggers instead of time triggers prevents overshoot
- *  when the motor lags behind the commanded profile.
- *
- *  s_accel = s_decel = v_cruise² / (2*a)
- *
- *  Output fields (theta_ref, omega_ref, alpha_ref, active) are identical
- *  to SCurve_t so both feed the cascade controller identically.
- * ═══════════════════════════════════════════════════════════════════════════
+ * 3-phase trapezoidal trajectory generator interface (position-triggered).
+ * Trapezoidal profile when v²/a ≤ stroke; triangular otherwise.
+ * Returns vel_ref each tick; decel entry keyed on remaining distance.
  */
 
 #ifndef INC_TRAPEZOID_H_

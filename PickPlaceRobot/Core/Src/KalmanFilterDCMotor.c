@@ -1,13 +1,12 @@
 /*
  * KalmanFilterDCMotor.c
  *
- *  Updated: May 2026
- *  Author : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- *  Position-only observer (M=1).
- *  S is 1x1 — scalar reciprocal used, no arm_mat_inverse_f32 needed.
- *  Multi-step init API: _Init → Set_ObserverPeriod → Set_ProcessNoise
- *                       → Set_MeasurementNoise → _Start
+ * 4-state discrete Kalman filter for the DC motor (position-only observer).
+ * State : [ theta  omega  I  tau_d ]
+ * All matrix ops via CMSIS-DSP arm_mat_*; no scratch aliasing.
  */
 
 #include "KalmanFilterDCMotor.h"

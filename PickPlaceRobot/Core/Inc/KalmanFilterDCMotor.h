@@ -1,39 +1,13 @@
 /*
  * KalmanFilterDCMotor.h
  *
- *  Updated: May 2026
- *  Author : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ═══════════════════════════════════════════════════════════════════════════
- *  4-State Discrete Kalman Filter — DC Motor  (POSITION-ONLY observer)
- *  Uses CMSIS-DSP arm_mat_* for all matrix operations.
- *
- *  Persistent arm_matrix_instance_f32 wrappers in struct (no re-declaration
- *  on every tick). Every intermediate has its own named backing array —
- *  no scratch pool, no aliasing possible.
- * ═══════════════════════════════════════════════════════════════════════════
- *
- *  STATE    x = [ theta   omega   I   tau_d ]'     (N = 4)
- *  MEASURE  z = [ theta ]                          (M = 1)
- *  INPUT    u = V_in  [V]
- *
- *  DISCRETE MODEL  (Euler ZOH,  Fd = I4 + Fc*dt)
- *
- *  Fd = | 1       dt            0             0      |
- *       | 0   1-(b/J)dt   (Kt/J)dt       (1/J)dt   |
- *       | 0  -(Ke/Lm)dt  1-(Rm/Lm)dt      0        |
- *       | 0       0            0             1       |
- *
- *  Gd = [ 0, 0, dt/Lm, 0 ]'
- *  Q  = var_tau_d * Dd*Dd',  Dd=[0,0,0,dt]'  ->  Q[3][3] = var_tau_d * dt^2
- *  H  = [ 1  0  0  0 ]      R = [ var_theta ]   (1x1 scalar)
- *
- *  PREDICT:  x_p = Fd*x + Gd*u    P_p = Fd*P*Fd' + Q
- *  UPDATE:   y   = z - H*x_p
- *            S   = H*P_p*H' + R   (1x1 — scalar reciprocal, no matrix inv)
- *            K   = P_p*H' / S
- *            x   = x_p + K*y
- *            P   = (I - K*H)*P_p
+ * 4-state discrete Kalman filter interface — DC motor observer.
+ * Persistent arm_matrix_instance_f32 wrappers; no re-init per tick.
+ * Multi-step init: _Init → Set_ObserverPeriod → Set_ProcessNoise
+ *                  → Set_MeasurementNoise → _Start
  */
 
 #ifndef INC_KALMANFILTERDCMOTOR_H_

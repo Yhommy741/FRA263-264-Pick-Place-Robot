@@ -1,31 +1,12 @@
 /*
  * MD20A.h
  *
- *  Created on: May 5, 2026
- *      Author: Yhommy's Notebook
+ * Created on: May 5, 2026
+ * Author: Yhommy
  *
- *  MD20A Motor Driver Library
- *  ─────────────────────────────────────────────────────────────────────────
- *  The MD20A uses a DIR + PWM control scheme.
- *  Both pins are driven by PWM channels on the same timer:
- *
- *      DIR (PA0 / TIM_CHANNEL_1):
- *          Duty = 100 % → logic HIGH → Forward
- *          Duty =   0 % → logic LOW  → Backward
- *
- *      PWM (PA1 / TIM_CHANNEL_2):
- *          Duty = |speed| % → motor speed
- *
- *  Truth table:
- *      DIR duty    PWM duty    Motor
- *      ─────────   ─────────   ──────────────
- *      100 %       X %         Forward  at X %
- *        0 %       X %         Backward at X %
- *      100 %       0 %         Coast (stop)
- *
- *  Hardware connections:
- *      DIR → PA0  (TIM2 CH1)
- *      PWM → PA1  (TIM2 CH2)
+ * MD20A motor driver library interface.
+ * DIR (TIM_CH1) : 100 % = Forward, 0 % = Backward.
+ * PWM (TIM_CH2) : duty = |speed| %.
  */
 
 #ifndef INC_MD20A_H_

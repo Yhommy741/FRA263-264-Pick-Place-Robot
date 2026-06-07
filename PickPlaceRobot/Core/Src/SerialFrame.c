@@ -1,8 +1,12 @@
 /*
  * SerialFrame.c
  *
- *  Created on: Apr 23, 2026
- *      Author: Yhommy
+ * Created on: Apr 23, 2026
+ * Author: Yhommy
+ *
+ * Binary serial framing library over UART (DMA-backed).
+ * Builds and parses fixed-layout frames: [ HEADER | fields | TERM ].
+ * Up to 32 TX and 32 RX fields; 8 supported data types.
  */
 
 #include "SerialFrame.h"

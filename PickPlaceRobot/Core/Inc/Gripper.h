@@ -1,47 +1,13 @@
 /*
  * Gripper.h
  *
- * Created on: May 24, 2026 | Revised: June 2026
- * Author: FRA263/264 Group 5
+ * Created on: May 24, 2026
+ * Author: Yhommy
  *
- * Dual-mode non-blocking gripper driver.
- *
- * ┌──────────────────┬──────────────────────────────────────────────────────┐
- * │ GRP_MODE_IO      │ Direct GPIO output (original behaviour).             │
- * │                  │ Each command pulses a GPIO pin HIGH for              │
- * │                  │ pulse_duration_ms, then resets it LOW.               │
- * │                  │ Sensor reads are live GPIO reads.                    │
- * ├──────────────────┼──────────────────────────────────────────────────────┤
- * │ GRP_MODE_CANBUS  │ CAN bus output via protocol v1.0.1.                  │
- * │                  │ Each command transmits a Write Relay frame           │
- * │                  │ (0x210, DLC=3) with the appropriate relay bitmask,   │
- * │                  │ then sends an OFF frame after pulse_duration_ms.     │
- * │                  │ Sensor state is read from GPIO pins directly —       │
- * │                  │ CAN protocol v1.0.1 has no sensor readback frame.    │
- * └──────────────────┴──────────────────────────────────────────────────────┘
- *
- * Relay Map (per spec §Relay Bank 0):
- *   Relay 0 (bit 0) — Gripper Up   solenoid
- *   Relay 1 (bit 1) — Gripper Down solenoid
- *   Relay 2 (bit 2) — Gripper Close solenoid
- *   Relay 3 (bit 3) — Gripper Open  solenoid
- *
- * Opto / Sensor Map (per spec §Opto Bank 0):
- *   Opto 4 (bit 4) — Gripper UP   sensor feedback
- *   Opto 5 (bit 5) — Gripper Down sensor feedback
- *   Opto 6 (bit 6) — Gripper Open/Close sensor feedback
- *
- * Usage — IO mode:
- *   Gripper_Init_IO(&gripper, <gpio args...>);
- *   // in main loop:
- *   Gripper_Update(&gripper);
- *
- * Usage — CAN mode:
- *   CANBus_Init(&bus, &hfdcan1, CANBUS_NODE_ID);
- *   Gripper_Init_CAN(&gripper, &bus);
- *   // in main loop:
- *   CANBus_Update(&bus);     // handles heartbeat + RX dispatch
- *   Gripper_Update(&gripper);
+ * Dual-mode non-blocking gripper driver interface.
+ * GRP_MODE_IO     — direct GPIO output (original behaviour).
+ * GRP_MODE_CANBUS — CAN bus output via protocol v1.0.1.
+ * Sensor lines always use GPIO; CAN v1.0.1 has no sensor readback.
  */
 
 #ifndef INC_GRIPPER_H_

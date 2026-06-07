@@ -27,9 +27,9 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  0001125c  2**0
                   CONTENTS, READONLY
- 12 .debug_info   0002d223  00000000  00000000  0001128c  2**0
+ 12 .debug_info   0002d21e  00000000  00000000  0001128c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 00005bae  00000000  00000000  0003e4af  2**0
+ 13 .debug_abbrev 00005baf  00000000  00000000  0003e4aa  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  14 .debug_aranges 00001a10  00000000  00000000  00044060  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -37,19 +37,19 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  0002a7fb  00000000  00000000  00046de6  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   000231e3  00000000  00000000  000715e1  2**0
+ 17 .debug_line   000231e6  00000000  00000000  000715e1  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00106af2  00000000  00000000  000947c4  2**0
+ 18 .debug_str    00106af2  00000000  00000000  000947c7  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      000000bc  00000000  00000000  0019b2b6  2**0
+ 19 .comment      000000bc  00000000  00000000  0019b2b9  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00006d04  00000000  00000000  0019b374  2**2
+ 20 .debug_frame  00006d04  00000000  00000000  0019b378  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 00000083  00000000  00000000  001a2078  2**0
+ 21 .debug_line_str 00000083  00000000  00000000  001a207c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 22 .debug_loc    0000171c  00000000  00000000  001a20fb  2**0
+ 22 .debug_loc    0000171c  00000000  00000000  001a20ff  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 23 .debug_ranges 00000060  00000000  00000000  001a3817  2**0
+ 23 .debug_ranges 00000060  00000000  00000000  001a381b  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:

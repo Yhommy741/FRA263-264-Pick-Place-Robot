@@ -2,19 +2,11 @@
  * BaseSystemInterface.h
  *
  * Created on: May 19, 2026
- * Author: FRA263/264 Group 5
+ * Author: Yhommy
  *
+ * Interface for the BaseSystem Modbus decoder.
  * ModbusRTU is embedded as a submodule inside BaseSystemInterface_t.
- * The global instance (BaseSystemInterface_t BaseSystem) is declared
- * in main.c — NOT here. No extern in this header.
- *
- * CHANGED (May 2026):
- *   • BaseSystem_Dispatch() renamed to BaseSystem_Interface_Decode().
- *   • BaseSystem_Interface_Decode() no longer calls any Robot_*() functions.
- *     It only decodes Modbus registers into BSI_PendingCmd_t (hbs->pending).
- *   • All Robot dispatch, FSM state, and gripper sequencing have been moved
- *     to TaskManager (TaskManager.h / TaskManager.c).
- *   • Robot.h is no longer included here — BSI is now Robot-agnostic.
+ * Global instance declared in main.c — no extern in this header.
  */
 
 #ifndef INC_BASESYSTEMINTERFACE_H_

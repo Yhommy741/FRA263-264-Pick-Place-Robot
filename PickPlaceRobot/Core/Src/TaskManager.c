@@ -2,17 +2,11 @@
  * TaskManager.c
  *
  * Created on: May 2026
- * Author: FRA263/264 Group 5
+ * Author: Yhommy
  *
- * Arbitration rules (highest priority first):
- *   1. ESTOP   — any source, always executed immediately, clears the queue
- *   2. STOP    — any source, clears moving tasks
- *   3. Joystick motion (JOG_STEP, JOG_VEL, HOME) — operator override
- *   4. Modbus motion (HOME, MOVE, SEQUENCE, PREC_TEST, JOG_STEP)
- *   5. Gripper commands — either source, no motion dependency
- *
- * State guard: commands that conflict with the current robot state are
- * silently dropped (e.g. MOVE while homing, HOME while already homing).
+ * Command arbitration and robot FSM runner.
+ * Priority: ESTOP > STOP > Joystick motion > Modbus motion > Gripper.
+ * Owns all gripper FSM state; BSI remains a pure Modbus decoder.
  */
 
 #include "TaskManager.h"

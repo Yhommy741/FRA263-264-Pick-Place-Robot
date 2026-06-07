@@ -1,3 +1,14 @@
+/*
+ * JoystickInterface.h
+ *
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * Joystick RS-485 UART driver interface.
+ * 6-byte binary frames: [ 0xAA | cmd | param_hi | param_lo | mode | checksum ]
+ * 9600 baud, 8N1, DMA RX on USART3.
+ */
+
 #ifndef JOYSTICK_INTERFACE_H
 #define JOYSTICK_INTERFACE_H
 

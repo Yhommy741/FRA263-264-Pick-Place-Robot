@@ -1,15 +1,12 @@
 /*
  * MD20A.c
  *
- *  Created on: May 5, 2026
- *      Author: Yhommy's Notebook
+ * Created on: May 5, 2026
+ * Author: Yhommy
  *
- *  MD20A Motor Driver — DIR + PWM Implementation
- *
- *  DIR pin (PA0 / TIM2 CH1) is driven by PWM at the same frequency as the
- *  speed channel but at a fixed duty cycle: 100 % = forward, 0 % = backward.
- *  This avoids any GPIO vs PWM pin conflict and keeps both outputs
- *  synchronised on the same timer.
+ * MD20A motor driver — DIR + PWM implementation.
+ * DIR and PWM share TIM2; DIR duty = 100 % (fwd) or 0 % (bwd).
+ * No __HAL_TIM_SET_COUNTER() calls — ARR shadow register handles updates.
  */
 
 #include "MD20A.h"

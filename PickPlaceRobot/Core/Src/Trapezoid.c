@@ -1,32 +1,12 @@
 /*
  * Trapezoid.c
  *
- *  Created : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ── Why position-triggered? ──────────────────────────────────────────────
- *
- *  A time-based trapezoid computes theta_ref = f(t).  If the motor lags
- *  (friction, current limit), robot->theta < theta_ref and the position
- *  PID commands extra velocity to catch up.  Near the end of the profile
- *  the reference snaps to theta_f while the motor is still moving fast —
- *  the robot overshoots.
- *
- *  A position-triggered trapezoid transitions phases based on how far the
- *  robot HAS ACTUALLY MOVED, not how long it has been running.  The decel
- *  phase starts exactly when s_ramp distance remains — regardless of whether
- *  the motor is ahead or behind the ideal time profile.  This guarantees the
- *  robot decelerates to zero before reaching the target.
- *
- * ── omega_ref as the primary control signal ──────────────────────────────
- *
- *  Each tick, omega_ref is ramped up/down by a_used * dt.  The cascade
- *  controller uses omega_ref as the velocity feedforward directly.  The
- *  position PID adds a correction on top, but the feedforward is the main
- *  driver.  theta_ref integrates omega_ref to give a smooth position
- *  reference that the position PID can track.
- *
- * ═══════════════════════════════════════════════════════════════════════════
+ * 3-phase position-triggered trapezoidal trajectory generator.
+ * Phase transitions on distance travelled, not elapsed time.
+ * Avoids overshoot caused by motor lag at deceleration entry.
  */
 
 #include "Trapezoid.h"

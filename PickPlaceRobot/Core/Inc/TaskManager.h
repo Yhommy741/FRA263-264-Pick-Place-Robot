@@ -2,26 +2,11 @@
  * TaskManager.h
  *
  * Created on: May 2026
- * Author: FRA263/264 Group 5
+ * Author: Yhommy
  *
- * Arbitrates service calls from BaseSystemInterface (Modbus) and
- * JoystickInterface, enforces a robot-state guard, then dispatches
- * the winning command to the Robot API.
- *
- * Also owns ALL gripper FSM state that previously lived inside
- * BaseSystemInterface_t, keeping BSI as a pure Modbus decoder.
- *
- * Typical main-loop usage:
- *
- *   BaseSystemInterface_Update(&BaseSystem);          // Modbus comms
- *   JoystickInterface_Update(&joystick);              // UART parse
- *
- *   BaseSystem_Interface_Decode(&BaseSystem, &robot); // register → pending (no Robot calls)
- *
- *   Task_PostFromModbus  (&taskMgr, &BaseSystem);     // feed event queue
- *   Task_PostFromJoystick(&taskMgr, &joystick);       // feed event queue
- *
- *   Task_Run(&taskMgr, &robot);                       // arbitrate + dispatch
+ * Command arbitration layer between BaseSystemInterface / JoystickInterface
+ * and the Robot API.
+ * Enforces robot-state guards and dispatches winning commands each tick.
  */
 
 #ifndef INC_TASKMANAGER_H_

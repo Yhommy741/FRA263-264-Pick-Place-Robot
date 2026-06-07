@@ -1,25 +1,13 @@
 /*
- * CANBus.c
+ * CANBUS.c
  *
- * Created : June 2026
- * Author  : FRA263/264 Group 5
+ * Created on: June 2026
+ * Author: Yhommy
  *
- * Implementation of the CAN protocol driver (v1.0.1).
- *
- * Design notes
- * ─────────────
- * • Non-blocking: no HAL_Delay() anywhere.
- * • CANBus_Update() must be called every main-loop iteration.
- * • Heartbeat TX is handled internally by CANBus_Update(); the caller only
- *   needs to ensure CANBus_Update() runs at least once per 500 ms.
- * • All TX is done via HAL_FDCAN_AddMessageToTxFifoQ (polling mode);
- *   the FDCAN TX FIFO has 3 slots so back-pressure is handled automatically.
- * • RX filter uses TWO range filters:
- *     Filter 0 : 0x010 – 0x010  (EMCY)
- *     Filter 1 : 0x110 – 0x710  (RT Data, Cmd Resp, Cfg Resp, Node HB)
- *   This requires StdFiltersNbr = 2 in MX_FDCAN1_Init().
- *   If only 1 filter slot is available use a mask filter instead — see
- *   CANBus_Init_SingleFilter() alternative commented below.
+ * CAN protocol driver implementation (v1.0.1).
+ * Non-blocking; CANBus_Update() must run every main-loop iteration.
+ * All TX via HAL_FDCAN_AddMessageToTxFifoQ (polling, 3-slot FIFO).
+ * Heartbeat TX handled internally — caller just loops CANBus_Update().
  */
 
 #include "CANBus.h"

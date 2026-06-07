@@ -1,8 +1,12 @@
 /*
  * Robot.c
  *
- *  Created : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * High-level robot API implementation — single revolute joint.
+ * Wraps QEI, Kalman filter, PID controller, trajectory generator,
+ * and gripper into a unified state-machine-driven interface.
  */
 
 #include "Robot.h"

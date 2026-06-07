@@ -1,8 +1,8 @@
-../Core/Src/SCurve.c:30:13:compute_phases	64	static
-../Core/Src/SCurve.c:77:13:plan_scurve	72	static
-../Core/Src/SCurve.c:155:6:SCurve_Init	32	static
-../Core/Src/SCurve.c:168:6:SCurve_SetTarget	24	static
-../Core/Src/SCurve.c:176:7:SCurve_ComputeTf	48	static
-../Core/Src/SCurve.c:195:6:SCurve_Update	56	static
-../Core/Src/SCurve.c:235:6:SCurve_Stop	16	static
-../Core/Src/SCurve.c:242:6:SCurve_Reset	32	static
+../Core/Src/SCurve.c:17:13:compute_phases	64	static
+../Core/Src/SCurve.c:64:13:plan_scurve	72	static
+../Core/Src/SCurve.c:142:6:SCurve_Init	32	static
+../Core/Src/SCurve.c:155:6:SCurve_SetTarget	24	static
+../Core/Src/SCurve.c:163:7:SCurve_ComputeTf	48	static
+../Core/Src/SCurve.c:182:6:SCurve_Update	56	static
+../Core/Src/SCurve.c:222:6:SCurve_Stop	16	static
+../Core/Src/SCurve.c:229:6:SCurve_Reset	32	static

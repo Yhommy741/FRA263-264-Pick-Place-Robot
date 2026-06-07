@@ -1,8 +1,12 @@
 /*
  * SerialFrame.h
  *
- *  Created on: Apr 23, 2026
- *      Author: Yhommy
+ * Created on: Apr 23, 2026
+ * Author: Yhommy
+ *
+ * Binary serial framing library interface.
+ * Non-blocking transmit and receive via DMA.
+ * Field types: uint8/16/32, int8/16/32, float, double.
  */
 
 /* =============================================================================

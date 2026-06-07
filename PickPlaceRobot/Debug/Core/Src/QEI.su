@@ -1,2 +1,2 @@
-../Core/Src/QEI.c:10:6:QEI_init	32	static
-../Core/Src/QEI.c:42:6:QEI_update	40	static
+../Core/Src/QEI.c:14:6:QEI_init	32	static
+../Core/Src/QEI.c:46:6:QEI_update	40	static

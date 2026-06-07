@@ -1,8 +1,11 @@
 /*
  * Controller.h
  *
- * Created : May 2026
- * Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * PID controller structs and API.
+ * Cascaded velocity/position loop used by Robot.c.
  */
 
 #ifndef INC_CONTROLLER_H_

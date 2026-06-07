@@ -1,8 +1,12 @@
 /*
  * Robot.h
  *
- *  Created : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
+ *
+ * High-level robot API — single revolute joint.
+ * State machine: IDLE → HOMING → MOVING → ESTOP (and transitions).
+ * All configuration sourced from RobotConfig.h.
  */
 
 #ifndef INC_ROBOT_H_

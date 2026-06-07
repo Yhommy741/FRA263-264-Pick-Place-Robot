@@ -4,21 +4,9 @@
  * Created on: Apr 11, 2026
  * Author: Yhommy
  *
- * Fix (May 2026):
- *   ROOT CAUSE — __HAL_TIM_SET_COUNTER() was called at the end of every
- *   PWM_write().  When two channels share one timer (MD20A: DIR on CH1,
- *   PWM on CH2, both on TIM2), writing DIR resets the counter to 0, then
- *   writing PWM resets it again immediately.  The counter therefore never
- *   advances and no pulse is generated on either pin.
- *
- *   FIX — Remove __HAL_TIM_SET_COUNTER().
- *   The ARR shadow register (TIM_AUTORELOAD_PRELOAD_ENABLE in MX_TIM2_Init)
- *   already guarantees a clean period update at the next overflow without
- *   any manual counter reset.
- *
- *   ADDITION — PWM_write_duty() updates only CCR (compare register).
- *   Use it for the fast path (same frequency, only duty changes) to avoid
- *   touching PSC/ARR and causing a glitch on the other channel.
+ * General-purpose PWM driver for STM32 HAL timers.
+ * PWM_write()      — sets frequency and duty cycle via ARR + CCR.
+ * PWM_write_duty() — fast path: updates CCR only (same frequency).
  */
 
 #include "PWM.h"

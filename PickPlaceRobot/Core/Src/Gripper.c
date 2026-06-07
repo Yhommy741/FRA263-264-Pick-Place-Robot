@@ -1,27 +1,13 @@
 /*
  * Gripper.c
  *
- * Created on: May 24, 2026 | Revised: June 2026
- * Author: FRA263/264 Group 5
+ * Created on: May 24, 2026
+ * Author: Yhommy
  *
- * Dual-mode non-blocking gripper driver.
- *
- * IO Mode
- * ────────
- *   Each command pulses a GPIO pin HIGH and records HAL_GetTick().
- *   Gripper_Update() resets the pin after pulse_duration_ms.
- *   Only one pin is ever active at once; a new command cancels the previous.
- *
- * CAN Mode
- * ─────────
- *   Each command calls CANBus_WriteRelays() with the appropriate bitmask.
- *   Gripper_Update() calls CANBus_WriteRelays(0x00) after pulse_duration_ms
- *   to de-energise the solenoid.
- *   Only one relay group is ever asserted at once; a new command overrides
- *   the pending mask immediately.
- *
- *   Sensor state is read from bus->opto_state, which is kept current by the
- *   CANBus driver whenever a Command Response or Real-Time Broadcast arrives.
+ * Dual-mode non-blocking gripper driver implementation.
+ * IO mode  : pulses a GPIO pin HIGH for pulse_duration_ms.
+ * CAN mode : sends CANBus_WriteRelays(), de-energises after timeout.
+ * Sensor feedback always reads live GPIO regardless of mode.
  */
 
 #include "Gripper.h"

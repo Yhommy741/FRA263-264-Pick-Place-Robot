@@ -2,29 +2,11 @@
  * BaseSystemInterface.c
  *
  * Created on: May 19, 2026
- * Author: FRA263/264 Group 5
+ * Author: Yhommy
  *
- * CHANGED (May 2026):
- *   • BaseSystem_Dispatch() renamed to BaseSystem_Interface_Decode().
- *   • All Robot_*() calls, FSM state machines, and gripper sequencing
- *     removed — this file is now a pure Modbus register decoder.
- *   • Robot.h / RobotConfig.h no longer included.
- *   • Conversion macros (DEG_TO_RAD) kept locally for register decoding.
- *
- * FIX (June 2026):
- *   • Section D: cmd_Gripper_auto_en now reads hbs->latchedGripperAuto
- *     (captured atomically with the sequence slots at latch time) instead
- *     of re-reading the live REG_GRIPPER_AUTO_EN register.
- *   • Section D: Slot sign preserved as signed rad so TaskManager can
- *     enforce CW/CCW direction (positive = CW, negative = CCW).
- *   • Sequence latch: removed the prevGripperAutoReg tracking branch that
- *     ran between runs and overwrote the sentinel 0xFF with the live
- *     register value.  prevGripperAutoReg is now ALWAYS 0xFF when not
- *     pending — it is only written to a real value during the pending
- *     window (to detect the checkbox edge), then immediately reset to 0xFF
- *     on commit.  This fixes the bug where the second START was ignored
- *     whenever the gripper checkbox value matched the previous run's value
- *     (e.g. disable→disable or enable→enable).
+ * Pure Modbus register decoder — Robot-agnostic.
+ * Decodes incoming Modbus frames into BSI_PendingCmd_t.
+ * No Robot_*() calls; all FSM dispatch lives in TaskManager.
  */
 
 #include "BaseSystemInterface.h"

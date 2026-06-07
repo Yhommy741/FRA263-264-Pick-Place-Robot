@@ -1,25 +1,12 @@
 /*
  * SCurve.c
  *
- *  Updated : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- *  Renamed from TrajectoryGen.c.  All Trajectory_* symbols replaced with
- *  SCurve_*.  Logic is identical to the original.
- *
- * ── Planning (SCurve_SetTarget) ─────────────────────────────────────────
- *
- *  Given:  s = |Δθ|,  vmax, amax, jmax
- *
- *  Derived limits:
- *    sa = 2·amax³ / jmax²      (min distance to reach amax)
- *    sv = vmax · (vmax/amax + amax/jmax)  (min distance to reach vmax)
- *
- *  Feasibility patterns:
- *    s >= sv  → Pattern 5: full 7-segment
- *    s >= sa  → Pattern 6: no cruise
- *    s <  sa  → Pattern 2/3/4: jerk-only ramps
- * ═══════════════════════════════════════════════════════════════════════════
+ * 7-segment jerk-limited S-curve trajectory generator implementation.
+ * Patterns 5 (full) and 6 (no cruise) with correct full-distance solve.
+ * Position-triggered output: returns theta_ref and vel_ref each tick.
  */
 
 #include "SCurve.h"

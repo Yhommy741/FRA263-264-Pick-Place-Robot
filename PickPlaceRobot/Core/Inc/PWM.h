@@ -4,6 +4,9 @@
  * Created on: Apr 11, 2026
  * Author: Yhommy
  *
+ * General-purpose PWM driver interface.
+ * Configures timer ARR for frequency and CCR for duty cycle.
+ * ClockSpeed = 170 MHz (STM32G474).
  */
 
 #ifndef INC_PWM_H_

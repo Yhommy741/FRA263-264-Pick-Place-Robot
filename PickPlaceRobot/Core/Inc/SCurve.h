@@ -1,27 +1,12 @@
 /*
  * SCurve.h
  *
- *  Updated : May 2026
- *  Author  : FRA263/264 Group 5
+ * Created on: May 2026
+ * Author: Yhommy
  *
- * ═══════════════════════════════════════════════════════════════════════════
- *  7-Segment S-Curve (Jerk-Limited) Trajectory Generator
- *
- *  Generates a smooth, jerk-limited position profile with 7 phases:
- *
- *    Phase 1  [0,       t1]   Jerk = +jmax      (accel ramp-up)
- *    Phase 2  [t1,      t2]   Jerk =  0         (constant accel)
- *    Phase 3  [t2,      t3]   Jerk = -jmax      (accel ramp-down)
- *    Phase 4  [t3,      t4]   Jerk =  0         (constant velocity cruise)
- *    Phase 5  [t4,      t5]   Jerk = -jmax      (decel ramp-up)
- *    Phase 6  [t5,      t6]   Jerk =  0         (constant decel)
- *    Phase 7  [t6,      t7]   Jerk = +jmax      (decel ramp-down)
- *
- *  Boundary conditions: θ̇(0)=0, θ̈(0)=0, θ̇(T)=0, θ̈(T)=0
- *
- *  Renamed from TrajectoryGen.h.
- *  Legacy Trajectory_* names kept as macros for drop-in compatibility.
- * ═══════════════════════════════════════════════════════════════════════════
+ * 7-segment S-curve (jerk-limited) trajectory generator interface.
+ * Phases: +J / const-A / -J / cruise / -J / const-D / +J.
+ * Boundary conditions: θ̇(0)=0, θ̈(0)=0, θ̇(T)=0, θ̈(T)=0.
  */
 
 #ifndef INC_SCURVE_H_
