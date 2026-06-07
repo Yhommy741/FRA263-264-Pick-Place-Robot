@@ -16528,9 +16528,9 @@ void MX_USART2_UART_Init(void)
  8007e98:	4b23      	ldr	r3, [pc, #140]	@ (8007f28 <MX_USART2_UART_Init+0x94>)
  8007e9a:	4a24      	ldr	r2, [pc, #144]	@ (8007f2c <MX_USART2_UART_Init+0x98>)
  8007e9c:	601a      	str	r2, [r3, #0]
-  huart2.Init.BaudRate = 19200;
+  huart2.Init.BaudRate = 230400;
  8007e9e:	4b22      	ldr	r3, [pc, #136]	@ (8007f28 <MX_USART2_UART_Init+0x94>)
- 8007ea0:	f44f 4296 	mov.w	r2, #19200	@ 0x4b00
+ 8007ea0:	f44f 3261 	mov.w	r2, #230400	@ 0x38400
  8007ea4:	605a      	str	r2, [r3, #4]
   huart2.Init.WordLength = UART_WORDLENGTH_9B;
  8007ea6:	4b20      	ldr	r3, [pc, #128]	@ (8007f28 <MX_USART2_UART_Init+0x94>)
