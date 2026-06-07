@@ -37,7 +37,7 @@
 #define RBT_WORKSPACE_MAX       450.0f      /* Degree                       */
 #define RBT_MAX_SPEED           5.6f        /* Rad/s                        */
 #define RBT_MAX_ACCEL           5.0f        /* Rad/s^2                      */
-#define RBT_MAX_JERK            15.0f       /* Rad/s^3                       */
+#define RBT_MAX_JERK            12.0f       /* Rad/s^3                       */
 
 
 /* ── Homing Constants ────────────────────────────────────────────────────── */
@@ -99,6 +99,18 @@
 /* ── Gripper Sensors Time Delay ─────────────────────────────────────────────── */
 #define GRP_WAIT_TIME           500
 #define GRP_WAIT_PENDULUM_TIME  2500
+
+/* ── Trajectory Mode Selection ───────────────────────────────────────────────
+ * Controls which profile generator is used for all user move commands
+ * (Robot_MoveConstrained, Robot_JogStep).
+ * Homing always uses SCurve regardless of this setting.
+ * ─────────────────────────────────────────────────────────────────────────── */
+typedef enum {
+    TRAJ_MODE_SCURVE    = 0,   /* 7-segment S-curve (smooth jerk-limited)    */
+    TRAJ_MODE_TRAPEZOID = 1,   /* 3-phase trapezoidal (classic vel profile)  */
+} TrajectoryMode_t;
+
+#define TRAJ_MODE               TRAJ_MODE_SCURVE   /* TRAJ_MODE_SCURVE or TRAJ_MODE_TRAPEZOID */
 
 /* ── Gripper Mode Selection ──────────────────────────────────────────────────
  * ─────────────────────────────────────────────────────────────────────────── */

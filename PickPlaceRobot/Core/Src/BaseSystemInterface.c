@@ -14,10 +14,17 @@
  * FIX (June 2026):
  *   • Section D: cmd_Gripper_auto_en now reads hbs->latchedGripperAuto
  *     (captured atomically with the sequence slots at latch time) instead
- *     of re-reading the live REG_GRIPPER_AUTO_EN register.  Re-reading the
- *     live register created a race: if the PC changed REG_GRIPPER_AUTO_EN
- *     between the latch call and the decode call (across main-loop
- *     iterations), the sequence would run with the wrong enable state.
+ *     of re-reading the live REG_GRIPPER_AUTO_EN register.
+ *   • Section D: Slot sign preserved as signed rad so TaskManager can
+ *     enforce CW/CCW direction (positive = CW, negative = CCW).
+ *   • Sequence latch: removed the prevGripperAutoReg tracking branch that
+ *     ran between runs and overwrote the sentinel 0xFF with the live
+ *     register value.  prevGripperAutoReg is now ALWAYS 0xFF when not
+ *     pending — it is only written to a real value during the pending
+ *     window (to detect the checkbox edge), then immediately reset to 0xFF
+ *     on commit.  This fixes the bug where the second START was ignored
+ *     whenever the gripper checkbox value matched the previous run's value
+ *     (e.g. disable→disable or enable→enable).
  */
 
 #include "BaseSystemInterface.h"
@@ -43,25 +50,13 @@ void BaseSystemInterface_Init(BaseSystemInterface_t *hbs,
     Modbus_init(&hbs->modbus, hbs->registerFrame);
     hbs->registerFrame[REG_HEARTBEAT].U16 = HEARTBEAT_ROBOT_YA;
 
-    /* Sentinel: INT16_MIN can never arrive from Modbus (Modbus is unsigned
-     * wire; signed reinterpretation gives range -32768..+32767, but the PC
-     * treats 0x8000 as -32768 which is not a valid target angle).
-     * Setting prevP2PTarget to INT16_MIN guarantees the very first write —
-     * including target = 0 degrees / index 0 — triggers the P2P latch.     */
-    hbs->prevP2PTarget    = INT16_MIN;
+    hbs->prevP2PTarget      = INT16_MIN;
     hbs->prevGripperAutoReg = 0xFF;
+    hbs->registerFrame[REG_GRIPPER_AUTO_EN].U16 = 0xFF;  /* sentinel until first PC write */
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  BaseSystemInterface_Update
- *
- *  Runs the Modbus protocol worker and syncs all live registers into
- *  hbs->data.  Also packs Robot state back into the register frame so the
- *  PC sees current position, task bits, and sensor bits.
- *
- *  The write-back fields (realPosition, realVelocity, sensorBits, etc.)
- *  must be refreshed by the caller (main.c or TaskManager) before this
- *  function is called each loop.
  * ═══════════════════════════════════════════════════════════════════════════ */
 void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
 {
@@ -90,17 +85,10 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
     data->p2pUnit         = rf[REG_P2P_UNIT].U16 & 0x01;
     data->p2pTarget       = (int16_t)rf[REG_P2P_TARGET].U16;
     data->softStopRequest = (uint8_t)(rf[REG_SOFT_STOP].U16 & 0x01);
-    /* Clear immediately — soft-stop is a one-shot trigger, not a persistent
-     * state.  Leaving it set causes TASK_EVT_STOP to be posted every loop. */
     if (data->softStopRequest)
-    {
         rf[REG_SOFT_STOP].U16 = 0;
-    }
 
-    /* ── Latch: P2P ──────────────────────────────────────────────────────── *
-     * Fires whenever either register changes and no command is pending.      *
-     * prevP2PTarget is initialised to INT16_MIN in Init (not a valid angle)  *
-     * so the very first write — including target = 0 — always triggers.      */
+    /* ── Latch: P2P ──────────────────────────────────────────────────────── */
     {
         uint16_t cu = rf[REG_P2P_UNIT].U16 & 0x01;
         int16_t  ct = (int16_t)rf[REG_P2P_TARGET].U16;
@@ -123,38 +111,57 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
     }
 
     /* ── Latch: Sequence ─────────────────────────────────────────────────── *
-     * Modbus_Protocol_Worker() processes ONE frame per Update() call.        *
-     * REG_SEQ_PAIRS and REG_GRIPPER_AUTO_EN always arrive in separate calls. *
-     * Step 1: stage slots when REG_SEQ_PAIRS arrives, set seqPending.        *
-     * Step 2: fire latch when REG_GRIPPER_AUTO_EN arrives (next Update call).*
-     * prevGripperAutoReg is only updated when NOT pending so the sentinel    *
-     * 0xFF survives until the checkbox write comes.                          */
+     * Two-frame protocol: REG_SEQ_PAIRS arrives first, REG_GRIPPER_AUTO_EN  *
+     * arrives in the next Modbus frame (one frame per Update() call).        *
+     *                                                                         *
+     * prevGripperAutoReg is ALWAYS 0xFF when not pending.  It is never       *
+     * tracked between runs — only used as an edge detector inside the        *
+     * pending window.  This guarantees that ANY value the PC writes (0 or 1) *
+     * is always different from 0xFF and always fires the latch, regardless   *
+     * of what value was used in the previous run.                             */
+    /* ── Latch: Sequence ─────────────────────────────────────────────────── *
+     * The PC always writes registers in this order:                           *
+     *   1. REG_SEQ_START..END  (slot positions)                               *
+     *   2. REG_SEQ_PAIRS       (pair count — triggers staging here)           *
+     *   3. REG_GRIPPER_AUTO_EN (checkbox — THIS is the final trigger)         *
+     *                                                                          *
+     * Strategy: stage slots+pairs when REG_SEQ_PAIRS arrives, but do NOT     *
+     * fire latchedSeqValid yet.  Fire it only when REG_GRIPPER_AUTO_EN        *
+     * is written (raw register changes from its cleared value of 0xFF).       *
+     * This guarantees latchedGripperAuto always holds the current run's       *
+     * checkbox value — never the previous run's stale value.                  *
+     *                                                                          *
+     * prevGripperAutoReg is initialised to 0xFF (sentinel) and reset to 0xFF  *
+     * after every commit, so ANY value the PC writes (0 or 1) is always       *
+     * detected as a change.                                                    */
+
+    /* Step 1: Stage slots and pairs when REG_SEQ_PAIRS arrives. */
     if (rf[REG_SEQ_PAIRS].U16 != 0 && !hbs->latchedSeqValid && !hbs->seqPending)
     {
         hbs->latchedSeqPairs = rf[REG_SEQ_PAIRS].U16;
         for (int i = 0; i < 16; i++)
             hbs->latchedSeqSlots[i] = (int16_t)rf[REG_SEQ_START + i].U16;
         rf[REG_SEQ_PAIRS].U16 = 0; data->sequencePairs = 0;
-        hbs->seqPending = 1;
-        /* prevGripperAutoReg already 0xFF from init/last-commit — do NOT touch */
+        hbs->seqPending         = 1;
+        hbs->prevGripperAutoReg = 0xFF;  /* arm sentinel — do NOT read checkbox yet */
+        /* Stop here. REG_GRIPPER_AUTO_EN still holds the previous run's value
+         * in this same Update() call. Wait for it to arrive in the next frame. */
     }
-
-    if (hbs->seqPending && !hbs->latchedSeqValid)
+    /* Step 2: Fire latch when REG_GRIPPER_AUTO_EN is written after staging.
+     * Use else-if so this never runs in the same call as Step 1.             */
+    else if (hbs->seqPending && !hbs->latchedSeqValid)
     {
         uint16_t curAuto = rf[REG_GRIPPER_AUTO_EN].U16;
-        if (curAuto != hbs->prevGripperAutoReg)  /* 0xFF != 0 or 1 → always fires */
+        if (curAuto != hbs->prevGripperAutoReg)
         {
             hbs->latchedGripperAuto = (uint8_t)(curAuto & 0x01);
             hbs->latchedSeqValid    = 1;
             hbs->seqPending         = 0;
-            hbs->prevGripperAutoReg = 0xFF;  /* reset sentinel for next run */
+            hbs->prevGripperAutoReg = 0xFF;  /* re-arm sentinel for next run */
+            /* Clear the register so the next run's write is always a fresh
+             * edge (PC always re-sends it, so clearing here is safe).        */
+            rf[REG_GRIPPER_AUTO_EN].U16 = 0xFF;
         }
-        /* else: checkbox not yet received — stay pending, wait next Update */
-    }
-    else if (!hbs->seqPending)
-    {
-        /* Not pending — track live value so it stays current between runs */
-        hbs->prevGripperAutoReg = rf[REG_GRIPPER_AUTO_EN].U16;
     }
 
     /* ── Latch: Gripper Pick/Place sequence ──────────────────────────────── */
@@ -184,7 +191,7 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
 
     hbs->pending.rx_frame_count++;
 
-    /* ── Pack Robot → PC (write-back — fields written by caller/TaskManager) */
+    /* ── Pack Robot → PC ─────────────────────────────────────────────────── */
     rf[REG_SENSORS].U16      = data->sensorBits;
     rf[REG_ROBOT_TASK].U16   = data->currentTaskBits;
     rf[REG_POSITION].U16     = (uint16_t)(int16_t)(data->realPosition     * 10.0f);
@@ -195,20 +202,12 @@ void BaseSystemInterface_Update(BaseSystemInterface_t *hbs)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  BaseSystem_Interface_Decode
- *
- *  Pure decoder: reads hbs latch state (populated by BaseSystemInterface_Update)
- *  and writes every decoded command into hbs->pending.
- *
- *  NO Robot_*() calls are made here.
- *  TaskManager calls Task_PostFromModbus() after this function to feed
- *  hbs->pending into the event queue.
  * ═══════════════════════════════════════════════════════════════════════════ */
 void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
 {
     BaseSystemInterface_Data_t *data = &hbs->data;
     BSI_PendingCmd_t           *pnd  = &hbs->pending;
 
-    /* Preserve diagnostic counters across the memset */
     uint32_t _rx   = pnd->rx_frame_count;
     uint32_t _dec  = pnd->cmd_decode_count;
     memset(pnd, 0, sizeof(BSI_PendingCmd_t));
@@ -216,9 +215,6 @@ void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
     pnd->cmd_decode_count = _dec;
 
     /* ── SECTION A: Safety ───────────────────────────────────────────────── */
-    /* Read emergencyActive for informational use only.
-     * Do NOT return early here — Stop commands must still be decoded and
-     * posted so the user can clear an ESTOP latch via Modbus Soft Stop.     */
     pnd->cmd_EStop = (uint8_t)(data->emergencyActive & 0x01);
     pnd->cmd_Stop  = data->softStopRequest;
 
@@ -239,8 +235,6 @@ void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
             pnd->cmd_Home = 1;
             break;
         case OP_MODE_JOG:
-            /* latchedJogDeg was captured by Update(); data->jogDegrees is
-             * already 0 at this point (zeroed when latched).  Read the latch. */
             if (hbs->latchedJogDeg != 0)
             {
                 pnd->cmd_Jog_step_rad = DEG_TO_RAD((float)hbs->latchedJogDeg);
@@ -249,33 +243,23 @@ void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
             }
             break;
         case OP_MODE_SET_HOME:
-            /* Signal SET_HOME via opMode — TaskManager checks for this value */
             break;
         default:
             break;
     }
 
-    /* ── SECTION B2: Performance test ────────────────────────────────────── *
-     * Triggered by testType=1.  Positions come from PREC_INIT / PREC_FINAL  *
-     * (same registers as precision test, same unit: degree or index×5°).    *
-     * Velocity and accel limits come from PERF_VEL / PERF_ACCEL.            */
+    /* ── SECTION B2: Performance test ────────────────────────────────────── */
     if (data->testType == 1 && data->perfVelocity != 0 && data->perfAcceleration != 0)
     {
         pnd->cmd_Perf_vel_rad_s    = (float)data->perfVelocity;
         pnd->cmd_Perf_accel_rad_s2 = (float)data->perfAcceleration;
-
-        /* Decode positions — mirror of Section C logic */
         pnd->cmd_Perf_init_rad  = hbs->latchedPrecUseIndex
                                  ? DEG_TO_RAD((float)hbs->latchedPrecInit  * 5.0f)
                                  : DEG_TO_RAD((float)hbs->latchedPrecInit);
         pnd->cmd_Perf_final_rad = hbs->latchedPrecUseIndex
                                  ? DEG_TO_RAD((float)hbs->latchedPrecFinal * 5.0f)
                                  : DEG_TO_RAD((float)hbs->latchedPrecFinal);
-
         pnd->cmd_Perf_valid = 1;
-
-        /* Clear ALL trigger registers so stale values cannot re-fire.
-         * The PC must write fresh vel/accel values with every new trigger. */
         hbs->registerFrame[REG_TEST_TYPE].U16  = 0;
         hbs->registerFrame[REG_PERF_VEL].U16   = 0;
         hbs->registerFrame[REG_PERF_ACCEL].U16 = 0;
@@ -305,19 +289,16 @@ void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
         hbs->latchedSeqValid = 0;
         pnd->cmd_Seq_pairs   = hbs->latchedSeqPairs;
         pnd->cmd_decode_count++;
-        /* FIX: Use hbs->latchedGripperAuto — captured atomically with the
-         * sequence slots when REG_SEQ_PAIRS was written in Update().
-         * Do NOT re-read the live REG_GRIPPER_AUTO_EN register here: if the
-         * PC changes that register between the latch call and this decode
-         * call (across main-loop iterations), the sequence would run with
-         * the wrong enable state — exactly the stale-data bug this fixes.  */
         pnd->cmd_Gripper_auto_en = hbs->latchedGripperAuto;
         for (int i = 0; i < 16; i++)
         {
-            float idx = (float)(hbs->latchedSeqSlots[i] < 0
-                                ? -hbs->latchedSeqSlots[i]
-                                :  hbs->latchedSeqSlots[i]);
-            pnd->cmd_Seq_slots_rad[i] = DEG_TO_RAD(idx * 5.0f);
+            /* positive index → CW  to  index*5°  (stored as +rad)
+             * negative index → CCW to  abs*5°    (stored as -rad)
+             * TaskManager._seq_move_directed() uses sign to force direction. */
+            int16_t s = hbs->latchedSeqSlots[i];
+            pnd->cmd_Seq_slots_rad[i] = (s < 0)
+                ? -DEG_TO_RAD((float)(-s) * 5.0f)
+                :  DEG_TO_RAD((float)( s) * 5.0f);
         }
     }
 
@@ -327,29 +308,25 @@ void BaseSystem_Interface_Decode(BaseSystemInterface_t *hbs)
         pnd->cmd_P2P_target_rad = (hbs->latchedP2PUnit == P2P_UNIT_DEG)
                                  ? DEG_TO_RAD((float)hbs->latchedP2PTarget)
                                  : DEG_TO_RAD((float)hbs->latchedP2PTarget * 5.0f);
-        pnd->cmd_P2P_valid  = 1;   /* explicit flag — target can legally be 0.0f */
+        pnd->cmd_P2P_valid   = 1;
         hbs->latchedP2PValid = 0;
         pnd->cmd_decode_count++;
     }
 
-    /* ── SECTION F: Jog (latched from Update, independent of mode) ───────── */
+    /* ── SECTION F: Jog ─────────────────────────────────────────────────── */
     if (!modeChanged && hbs->latchedJogDeg != 0)
     {
         pnd->cmd_Jog_step_rad = DEG_TO_RAD((float)hbs->latchedJogDeg);
-        hbs->latchedJogDeg = 0;
+        hbs->latchedJogDeg    = 0;
         pnd->cmd_decode_count++;
     }
 
     /* ── SECTION G: Manual gripper ───────────────────────────────────────── */
-    /* NOTE: cmd_Gripper_auto_en is set in Section D from the atomically
-     * latched value (hbs->latchedGripperAuto).  It must NOT be overwritten
-     * here from the live register.                                           */
-
     if (hbs->latchedGripperValid)
     {
         hbs->latchedGripperValid      = 0;
         pnd->cmd_Gripper_manual       = hbs->latchedGripperCmd;
-        pnd->cmd_Gripper_manual_valid = 1;   /* GRP_CMD_UP == 0, so need a separate flag */
+        pnd->cmd_Gripper_manual_valid = 1;
     }
 
     if (hbs->latchedGripperSeqValid)

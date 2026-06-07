@@ -208,9 +208,39 @@ int main(void)
                  * packing into the register frame, so the PC receives         *
                  * (degrees × 10) and divides by 10 to get the display value. */
                 BaseSystem.data.realPosition     = RAD_TO_DEG(Robot_GetPosition    (&robot));
-                BaseSystem.data.realVelocity     = RAD_TO_DEG(Robot_GetVelocity    (&robot));
-                BaseSystem.data.realAcceleration = RAD_TO_DEG(Robot_GetAcceleration(&robot));
-                BaseSystem.data.currentTaskBits  = (uint16_t)Robot_GetState(&robot);
+                BaseSystem.data.realVelocity     = Robot_GetVelocity    (&robot);
+                BaseSystem.data.realAcceleration = Robot_GetAcceleration(&robot);
+                /* REG_ROBOT_TASK (0x27) bit mapping (BaseSystem protocol doc 4.3):
+                 *   0x0001 — Homing
+                 *   0x0002 — Go Pick  (even sequence step)
+                 *   0x0004 — Go Place (odd  sequence step)
+                 *   0x0008 — Go Point (P2P move, jog, prec/perf test)
+                 *   0x0000 — Idle
+                 * Use TaskManager state — NOT Robot_GetState() — so the correct
+                 * task is reported throughout a sequence step (including while the
+                 * robot is briefly ROBOT_IDLE between steps).                     */
+                {
+                    Robot_State_t rs = Robot_GetState(&robot);
+                    uint16_t tbits;
+                    if (rs == ROBOT_HOMING_FAST_STATE   ||
+                        rs == ROBOT_HOMING_BACKOFF_STATE ||
+                        rs == ROBOT_HOMING_SLOW_STATE    ||
+                        rs == ROBOT_HOMING_OFFSET_STATE)
+                        tbits = 0x0001u;                         /* Homing        */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 0)
+                        tbits = 0x0002u;                         /* Go Pick       */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 1)
+                        tbits = 0x0004u;                         /* Go Place      */
+                    else if (rs == ROBOT_MOVE    ||
+                             rs == ROBOT_JOG_VEL ||
+                             rs == ROBOT_JOG_STEP ||
+                             taskMgr.precRunning  ||
+                             taskMgr.perfRunning)
+                        tbits = 0x0008u;                         /* Go Point      */
+                    else
+                        tbits = 0x0000u;                         /* Idle          */
+                    BaseSystem.data.currentTaskBits = tbits;
+                }
                 BaseSystem.data.sensorBits       =
                     ((uint16_t)Robot_Gripper_GetUpState  (&robot) << 0u) |
                     ((uint16_t)Robot_Gripper_GetDownState(&robot) << 1u) |
@@ -257,9 +287,39 @@ int main(void)
                 /* ── Write-back: push robot state into Modbus registers ──── *
                  * FIX: convert rad → deg before assigning.                   */
                 BaseSystem.data.realPosition     = RAD_TO_DEG(Robot_GetPosition    (&robot));
-                BaseSystem.data.realVelocity     = RAD_TO_DEG(Robot_GetVelocity    (&robot));
-                BaseSystem.data.realAcceleration = RAD_TO_DEG(Robot_GetAcceleration(&robot));
-                BaseSystem.data.currentTaskBits  = (uint16_t)Robot_GetState(&robot);
+                BaseSystem.data.realVelocity     = Robot_GetVelocity    (&robot);
+                BaseSystem.data.realAcceleration = Robot_GetAcceleration(&robot);
+                /* REG_ROBOT_TASK (0x27) bit mapping (BaseSystem protocol doc 4.3):
+                 *   0x0001 — Homing
+                 *   0x0002 — Go Pick  (even sequence step)
+                 *   0x0004 — Go Place (odd  sequence step)
+                 *   0x0008 — Go Point (P2P move, jog, prec/perf test)
+                 *   0x0000 — Idle
+                 * Use TaskManager state — NOT Robot_GetState() — so the correct
+                 * task is reported throughout a sequence step (including while the
+                 * robot is briefly ROBOT_IDLE between steps).                     */
+                {
+                    Robot_State_t rs = Robot_GetState(&robot);
+                    uint16_t tbits;
+                    if (rs == ROBOT_HOMING_FAST_STATE   ||
+                        rs == ROBOT_HOMING_BACKOFF_STATE ||
+                        rs == ROBOT_HOMING_SLOW_STATE    ||
+                        rs == ROBOT_HOMING_OFFSET_STATE)
+                        tbits = 0x0001u;                         /* Homing        */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 0)
+                        tbits = 0x0002u;                         /* Go Pick       */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 1)
+                        tbits = 0x0004u;                         /* Go Place      */
+                    else if (rs == ROBOT_MOVE    ||
+                             rs == ROBOT_JOG_VEL ||
+                             rs == ROBOT_JOG_STEP ||
+                             taskMgr.precRunning  ||
+                             taskMgr.perfRunning)
+                        tbits = 0x0008u;                         /* Go Point      */
+                    else
+                        tbits = 0x0000u;                         /* Idle          */
+                    BaseSystem.data.currentTaskBits = tbits;
+                }
                 BaseSystem.data.sensorBits       =
                     ((uint16_t)Robot_Gripper_GetUpState  (&robot) << 0u) |
                     ((uint16_t)Robot_Gripper_GetDownState(&robot) << 1u) |
@@ -311,7 +371,37 @@ int main(void)
                 BaseSystem.data.realPosition     = RAD_TO_DEG(Robot_GetPosition(&robot));
                 BaseSystem.data.realVelocity     = 0.0f;
                 BaseSystem.data.realAcceleration = 0.0f;
-                BaseSystem.data.currentTaskBits  = (uint16_t)Robot_GetState(&robot);
+                /* REG_ROBOT_TASK (0x27) bit mapping (BaseSystem protocol doc 4.3):
+                 *   0x0001 — Homing
+                 *   0x0002 — Go Pick  (even sequence step)
+                 *   0x0004 — Go Place (odd  sequence step)
+                 *   0x0008 — Go Point (P2P move, jog, prec/perf test)
+                 *   0x0000 — Idle
+                 * Use TaskManager state — NOT Robot_GetState() — so the correct
+                 * task is reported throughout a sequence step (including while the
+                 * robot is briefly ROBOT_IDLE between steps).                     */
+                {
+                    Robot_State_t rs = Robot_GetState(&robot);
+                    uint16_t tbits;
+                    if (rs == ROBOT_HOMING_FAST_STATE   ||
+                        rs == ROBOT_HOMING_BACKOFF_STATE ||
+                        rs == ROBOT_HOMING_SLOW_STATE    ||
+                        rs == ROBOT_HOMING_OFFSET_STATE)
+                        tbits = 0x0001u;                         /* Homing        */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 0)
+                        tbits = 0x0002u;                         /* Go Pick       */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 1)
+                        tbits = 0x0004u;                         /* Go Place      */
+                    else if (rs == ROBOT_MOVE    ||
+                             rs == ROBOT_JOG_VEL ||
+                             rs == ROBOT_JOG_STEP ||
+                             taskMgr.precRunning  ||
+                             taskMgr.perfRunning)
+                        tbits = 0x0008u;                         /* Go Point      */
+                    else
+                        tbits = 0x0000u;                         /* Idle          */
+                    BaseSystem.data.currentTaskBits = tbits;
+                }
                 BaseSystem.data.sensorBits       = 0u;
                 BaseSystem.data.emergencyActive  = 1u;
 
@@ -365,7 +455,37 @@ int main(void)
                 BaseSystem.data.realPosition     = RAD_TO_DEG(Robot_GetPosition(&robot));
                 BaseSystem.data.realVelocity     = 0.0f;
                 BaseSystem.data.realAcceleration = 0.0f;
-                BaseSystem.data.currentTaskBits  = (uint16_t)Robot_GetState(&robot);
+                /* REG_ROBOT_TASK (0x27) bit mapping (BaseSystem protocol doc 4.3):
+                 *   0x0001 — Homing
+                 *   0x0002 — Go Pick  (even sequence step)
+                 *   0x0004 — Go Place (odd  sequence step)
+                 *   0x0008 — Go Point (P2P move, jog, prec/perf test)
+                 *   0x0000 — Idle
+                 * Use TaskManager state — NOT Robot_GetState() — so the correct
+                 * task is reported throughout a sequence step (including while the
+                 * robot is briefly ROBOT_IDLE between steps).                     */
+                {
+                    Robot_State_t rs = Robot_GetState(&robot);
+                    uint16_t tbits;
+                    if (rs == ROBOT_HOMING_FAST_STATE   ||
+                        rs == ROBOT_HOMING_BACKOFF_STATE ||
+                        rs == ROBOT_HOMING_SLOW_STATE    ||
+                        rs == ROBOT_HOMING_OFFSET_STATE)
+                        tbits = 0x0001u;                         /* Homing        */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 0)
+                        tbits = 0x0002u;                         /* Go Pick       */
+                    else if (taskMgr.seqRunning && taskMgr.seqStep % 2 == 1)
+                        tbits = 0x0004u;                         /* Go Place      */
+                    else if (rs == ROBOT_MOVE    ||
+                             rs == ROBOT_JOG_VEL ||
+                             rs == ROBOT_JOG_STEP ||
+                             taskMgr.precRunning  ||
+                             taskMgr.perfRunning)
+                        tbits = 0x0008u;                         /* Go Point      */
+                    else
+                        tbits = 0x0000u;                         /* Idle          */
+                    BaseSystem.data.currentTaskBits = tbits;
+                }
                 BaseSystem.data.sensorBits       = 0u;
                 BaseSystem.data.emergencyActive  = 1u;
 

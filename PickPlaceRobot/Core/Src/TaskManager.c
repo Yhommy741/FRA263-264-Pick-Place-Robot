@@ -18,6 +18,9 @@
 #include "TaskManager.h"
 #include "RobotConfig.h"
 #include <string.h>
+#include <math.h>
+
+#define TWO_PI  6.28318530718f
 
 /* ── Local helpers ────────────────────────────────────────────────────────── */
 static inline uint8_t _queue_empty(const TaskManager_t *tm)
@@ -26,9 +29,6 @@ static inline uint8_t _queue_empty(const TaskManager_t *tm)
 static inline uint8_t _queue_full(const TaskManager_t *tm)
 { return (tm->q_count >= TASK_QUEUE_SIZE); }
 
-/* Peek at the highest-priority event without consuming it.
- * For simplicity the queue is a ring-FIFO; ESTOP is handled by scanning
- * the entire queue for an ESTOP entry before processing in order. */
 static uint8_t _queue_has_estop(const TaskManager_t *tm)
 {
     for (uint8_t i = 0; i < tm->q_count; i++)
@@ -62,9 +62,47 @@ static void _queue_flush(TaskManager_t *tm)
     tm->q_head = 0; tm->q_tail = 0; tm->q_count = 0;
 }
 
-/* ── State guard ──────────────────────────────────────────────────────────── *
- * Returns 1 if the event is allowed given the current robot state.            *
+/* ── _seq_move_directed ───────────────────────────────────────────────────── *
+ * Moves the robot to abs(signed_slot_rad) with the direction encoded by its   *
+ * sign (positive = CW, negative = CCW).                                       *
+ *                                                                               *
+ * robot->theta is an unbounded accumulator (encoder-derived), NOT normalized  *
+ * to 0–2π.  The abs_target from the BaseSystem IS in 0–2π.  We must find the  *
+ * correct absolute target by:                                                  *
+ *   1. Bring abs_target into the same revolution as theta using floor division.*
+ *   2. Check if that candidate gives the correct direction (sign of delta).    *
+ *   3. If not, add or subtract one full revolution to flip direction.          *
  * ─────────────────────────────────────────────────────────────────────────── */
+static void _seq_move_directed(Robot_t *robot, float signed_slot_rad,
+                                float omega_max, float alpha_max)
+{
+    float abs_target = fabsf(signed_slot_rad);
+    float theta      = robot->theta;
+
+    /* Step 1: align abs_target to the same revolution as theta.
+     * floor(theta / 2π) gives the revolution count; multiply back to get
+     * the base offset of the current revolution.                           */
+    float rev_base = floorf(theta / TWO_PI) * TWO_PI;
+    float target   = rev_base + abs_target;
+
+    /* Step 2: enforce direction by adjusting by ±2π if needed.
+     *   CW  (positive slot): delta must be > 0  → if target <= theta, +2π
+     *   CCW (negative slot): delta must be < 0  → if target >= theta, -2π */
+    if (signed_slot_rad >= 0.0f)
+    {
+        /* CW */
+        if (target <= theta) target += TWO_PI;
+    }
+    else
+    {
+        /* CCW */
+        if (target >= theta) target -= TWO_PI;
+    }
+
+    Robot_MoveConstrained(robot, target, omega_max, alpha_max);
+}
+
+/* ── State guard ──────────────────────────────────────────────────────────── */
 static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
 {
     Robot_State_t rs = Robot_GetState(robot);
@@ -73,10 +111,9 @@ static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
     {
         case TASK_EVT_ESTOP:
         case TASK_EVT_STOP:
-            return 1;   /* always allowed */
+            return 1;
 
         case TASK_EVT_HOME:
-            /* Reject if already homing or in E-stop */
             if (rs == ROBOT_ESTOP) return 0;
             if (rs == ROBOT_HOMING_FAST_STATE  ||
                 rs == ROBOT_HOMING_BACKOFF_STATE ||
@@ -87,7 +124,6 @@ static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
         case TASK_EVT_MOVE:
         case TASK_EVT_JOG_STEP:
         case TASK_EVT_JOG_VEL:
-            /* Reject if E-stopped or actively homing */
             if (rs == ROBOT_ESTOP) return 0;
             if (rs == ROBOT_HOMING_FAST_STATE  ||
                 rs == ROBOT_HOMING_BACKOFF_STATE ||
@@ -96,25 +132,19 @@ static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
             return 1;
 
         case TASK_EVT_SEQUENCE:
-            /* Reject if E-stopped, homing, or a sequence/test is already running */
             if (rs == ROBOT_ESTOP) return 0;
             if (rs == ROBOT_HOMING_FAST_STATE  ||
                 rs == ROBOT_HOMING_BACKOFF_STATE ||
                 rs == ROBOT_HOMING_SLOW_STATE   ||
                 rs == ROBOT_HOMING_OFFSET_STATE) return 0;
-            /* seqRunning check done by caller (Task_Run step 2 returns early) */
             return 1;
 
         case TASK_EVT_PREC_TEST:
-            /* Reject if E-stopped, homing, or a precision test is already running.
-             * Without this guard a duplicate event resets precGoingToFinal mid-run
-             * and the robot repeatedly moves to precFinalRad (same direction bug). */
             if (rs == ROBOT_ESTOP) return 0;
             if (rs == ROBOT_HOMING_FAST_STATE  ||
                 rs == ROBOT_HOMING_BACKOFF_STATE ||
                 rs == ROBOT_HOMING_SLOW_STATE   ||
                 rs == ROBOT_HOMING_OFFSET_STATE) return 0;
-            /* precRunning check done by caller (Task_Run step 2 returns early) */
             return 1;
 
         case TASK_EVT_PERF_TEST:
@@ -126,8 +156,6 @@ static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
             return 1;
 
         case TASK_EVT_SET_HOME:
-            /* Only valid when the robot is still — shifting home mid-move
-             * would corrupt theta_target and cause a position jump.         */
             if (rs == ROBOT_ESTOP)  return 0;
             if (rs == ROBOT_MOVE || rs == ROBOT_JOG_VEL || rs == ROBOT_JOG_STEP) return 0;
             if (rs == ROBOT_HOMING_FAST_STATE  ||
@@ -149,19 +177,15 @@ static uint8_t _guard_ok(TaskEvent_ID_t id, const Robot_t *robot)
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Task_Init
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* Inside TaskManager.c */
 void Task_Init(TaskManager_t *tm)
 {
     if (tm == NULL) return;
-
-    /* 1. Clear out the entire structure cleanly */
     memset(tm, 0, sizeof(TaskManager_t));
-
-    /* 2. Explicitly kill all high-level automation sequences, testing routines, and commands */
-    tm->seqRunning    = 0;
-    tm->seqStep       = 0;  /* Wipes Pick & Place sequence steps */
-    tm->precRunning   = 0;  /* Wipes precision test routines */
-    tm->perfRunning   = 0;  /* Wipes performance test routines */
+    tm->seqRunning          = 0;
+    tm->seqStep             = 0;
+    tm->seqPendingAfterHome = 0;
+    tm->precRunning         = 0;
+    tm->perfRunning         = 0;
     tm->activeTask    = TASK_EVT_NONE;
     tm->sysResetRequested = 0;
 }
@@ -185,10 +209,6 @@ uint8_t Task_PostEvent(TaskManager_t *tm, TaskEvent_t evt)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Task_PostFromModbus
- *
- *  Reads BSI_PendingCmd_t (written by BaseSystem_Interface_Decode) and
- *  converts every set flag into a TaskEvent_t pushed onto the queue.
- *  No Robot calls are made here.
  * ═══════════════════════════════════════════════════════════════════════════ */
 void Task_PostFromModbus(TaskManager_t *tm, BaseSystemInterface_t *hbs)
 {
@@ -199,19 +219,15 @@ void Task_PostFromModbus(TaskManager_t *tm, BaseSystemInterface_t *hbs)
     {
         TaskEvent_t e = { TASK_EVT_ESTOP, TASK_SRC_MODBUS, 0.0f, 0 };
         Task_PostEvent(tm, e);
-        /* Do NOT return here — Soft Stop must still be checked so the user
-         * can send REG_SOFT_STOP=1 to clear an ESTOP latch via Robot_Stop() */
     }
 
-    /* ── Soft stop (also clears ESTOP latch — Robot_Stop sets state=IDLE) ── */
+    /* ── Soft stop ──────────────────────────────────────────────────────── */
     if (pnd->cmd_Stop)
     {
         TaskEvent_t e = { TASK_EVT_STOP, TASK_SRC_MODBUS, 0.0f, 0 };
         Task_PostEvent(tm, e);
     }
 
-    /* Remaining commands are ignored while EStop is active — only Stop
-     * is meaningful in that state (handled above).                          */
     if (pnd->cmd_EStop) goto clear_pending;
 
     /* ── Home ───────────────────────────────────────────────────────────── */
@@ -229,7 +245,7 @@ void Task_PostFromModbus(TaskManager_t *tm, BaseSystemInterface_t *hbs)
     }
 
     /* ── P2P Move ───────────────────────────────────────────────────────── */
-    if (pnd->cmd_P2P_valid)   /* use flag, not value — target can be 0.0f (home position) */
+    if (pnd->cmd_P2P_valid)
     {
         TaskEvent_t e = { TASK_EVT_MOVE, TASK_SRC_MODBUS, pnd->cmd_P2P_target_rad, 0 };
         Task_PostEvent(tm, e);
@@ -272,21 +288,15 @@ void Task_PostFromModbus(TaskManager_t *tm, BaseSystemInterface_t *hbs)
     /* ── Performance test ───────────────────────────────────────────────── */
     if (pnd->cmd_Perf_valid)
     {
-        /* Always update stored parameters — new values take effect immediately */
         tm->perfVelRad   = pnd->cmd_Perf_vel_rad_s;
         tm->perfAccelRad = pnd->cmd_Perf_accel_rad_s2;
         tm->perfInitRad  = pnd->cmd_Perf_init_rad;
         tm->perfFinalRad = pnd->cmd_Perf_final_rad;
 
-        /* If test is running, flag a restart — Task_Run will stop and
-         * re-dispatch once it sees perfRestartPending with perfRunning=0 */
         if (tm->perfRunning)
         {
             tm->perfRunning      = 0;
             tm->perfGoingToFinal = 0;
-            /* Robot_Stop() cannot be called here — no robot handle.
-             * Set perfRestartPending so Task_Run stops the robot and
-             * immediately re-queues the event on the next iteration.   */
             tm->perfRestartPending = 1;
         }
 
@@ -308,7 +318,6 @@ void Task_PostFromModbus(TaskManager_t *tm, BaseSystemInterface_t *hbs)
         Task_PostEvent(tm, e);
     }
 
-    /* Clear pending so stale events are not re-posted next loop */
     clear_pending:
     pnd->cmd_P2P_target_rad       = 0.0f;
     pnd->cmd_P2P_valid            = 0;
@@ -342,7 +351,7 @@ void Task_PostFromJoystick(TaskManager_t *tm, JoystickInterface_t *joy)
     {
         case JOY_CMD_MOVE:
             e.id    = TASK_EVT_MOVE;
-            e.arg_f = data;          /* target position [rad] */
+            e.arg_f = data;
             break;
         case JOY_CMD_STOP:
             e.id    = TASK_EVT_STOP;
@@ -350,7 +359,7 @@ void Task_PostFromJoystick(TaskManager_t *tm, JoystickInterface_t *joy)
             break;
         case JOY_CMD_SET_HOME:
             e.id    = TASK_EVT_SET_HOME;
-            e.arg_f = data;          /* new home offset [rad] */
+            e.arg_f = data;
             break;
         case JOY_CMD_HOME:
             e.id    = TASK_EVT_HOME;
@@ -358,11 +367,11 @@ void Task_PostFromJoystick(TaskManager_t *tm, JoystickInterface_t *joy)
             break;
         case JOY_CMD_JOG_VEL_CCW:
             e.id    = TASK_EVT_JOG_VEL;
-            e.arg_f = fabsf(data);   /* CCW = positive */
+            e.arg_f = fabsf(data);
             break;
         case JOY_CMD_JOG_VEL_CW:
             e.id    = TASK_EVT_JOG_VEL;
-            e.arg_f = -fabsf(data);  /* CW  = negative */
+            e.arg_f = -fabsf(data);
             break;
         case JOY_CMD_JOG_STEP_CCW:
             e.id    = TASK_EVT_JOG_STEP;
@@ -393,18 +402,20 @@ void Task_PostFromJoystick(TaskManager_t *tm, JoystickInterface_t *joy)
             e.arg_f  = 0.0f;
             break;
         default:
-            return;   /* unknown command — ignore */
+            return;
     }
 
     Task_PostEvent(tm, e);
-
-    /* Mark command consumed so it is not re-posted on the next loop */
     joy->parsed_cmd  = JOY_CMD_NONE;
     joy->parsed_data = 0.0f;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  _gripper_seq_tick  —  Standalone Pick/Place FSM
+ *  _gripper_seq_tick  —  Standalone Pick/Place FSM (manual command)
+ *
+ *  No pendulum wait — MoveDown fires immediately for Place so manual
+ *  commands respond instantly.  The sequence FSM (_seq_grip_tick) retains
+ *  the pendulum delay for automated runs.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void _gripper_seq_tick(TM_GripperFSM_t *grp, Robot_t *robot)
 {
@@ -414,12 +425,10 @@ static void _gripper_seq_tick(TM_GripperFSM_t *grp, Robot_t *robot)
             break;
 
         case GRP_FSM_PENDULUM:
-            if (HAL_GetTick() - grp->grpTimer >= GRP_WAIT_PENDULUM_TIME)
-            {
-                Robot_Gripper_MoveDown(robot);
-                grp->grpTimer = HAL_GetTick();
-                grp->grpState = GRP_FSM_DOWN;
-            }
+            /* Manual Place: skip pendulum wait — move down immediately. */
+            Robot_Gripper_MoveDown(robot);
+            grp->grpTimer = HAL_GetTick();
+            grp->grpState = GRP_FSM_DOWN;
             break;
 
         case GRP_FSM_DOWN:
@@ -514,8 +523,8 @@ static void _seq_grip_tick(TaskManager_t *tm, Robot_t *robot)
                 if (tm->seqStep >= tm->seqTotalSteps)
                     tm->seqRunning = 0;
                 else
-                    Robot_MoveConstrained(robot, tm->seqSlotsRad[tm->seqStep],
-                                          RBT_MAX_SPEED, RBT_MAX_ACCEL);
+                    _seq_move_directed(robot, tm->seqSlotsRad[tm->seqStep],
+                                       RBT_MAX_SPEED, RBT_MAX_ACCEL);
             }
             break;
 
@@ -530,15 +539,13 @@ static void _seq_grip_tick(TaskManager_t *tm, Robot_t *robot)
  * ═══════════════════════════════════════════════════════════════════════════ */
 void Task_Run(TaskManager_t *tm, Robot_t *robot)
 {
-    /* ── Step 1: Scan for E-Stop anywhere in the queue ───────────────────── *
-     * Skip this scan when the robot is ALREADY in ESTOP — in that state     *
-     * the only useful event is TASK_EVT_STOP (Robot_Stop clears the latch). *
-     * If we flushed the queue here we would discard that STOP event.         */
+    /* ── Step 1: E-Stop scan ─────────────────────────────────────────────── */
     if (Robot_GetState(robot) != ROBOT_ESTOP && _queue_has_estop(tm))
     {
         _queue_flush(tm);
-        tm->seqRunning  = 0;
-        tm->precRunning = 0;
+        tm->seqRunning          = 0;
+        tm->seqPendingAfterHome = 0;
+        tm->precRunning         = 0;
         tm->grp.grpState     = GRP_FSM_IDLE;
         tm->grp.seqGripState = GRP_FSM_IDLE;
         Robot_EStop(robot);
@@ -548,18 +555,13 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
         return;
     }
 
-    /* ── Step 1b: Scan for Soft-Stop anywhere in the queue ───────────────── *
-     * Must execute BEFORE any FSM tick (Step 2) — otherwise seqRunning,     *
-     * precRunning, or the standalone Pick/Place FSM hit `return` and the     *
-     * queue is never checked, so TASK_EVT_STOP is silently ignored while     *
-     * a sequence is running.                                                  *
-     * Execute the full stop logic inline here so no FSM tick runs at all.    */
+    /* ── Step 1b: Soft-Stop scan ─────────────────────────────────────────── */
     if (_queue_has_stop(tm))
     {
         _queue_flush(tm);
-
         tm->seqRunning           = 0;
         tm->seqStep              = 0;
+        tm->seqPendingAfterHome  = 0;
         tm->precRunning          = 0;
         tm->precGoingToFinal     = 0;
         tm->perfRunning          = 0;
@@ -568,16 +570,12 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
         tm->grp.grpState         = GRP_FSM_IDLE;
         tm->grp.seqGripState     = GRP_FSM_IDLE;
         tm->activeTask           = TASK_EVT_NONE;
-
-        Robot_Stop(robot);           /* stop trajectory, hold position, → ROBOT_IDLE */
+        Robot_Stop(robot);
         tm->dbg_eventsRun++;
         return;
     }
 
-    /* ── Step 2: Tick running FSMs before dispatching new events ─────────── *
-     * Running FSMs get priority — a new command won't interrupt a running     *
-     * sequence or precision test (STOP/ESTOP are handled above).              *
-     * ─────────────────────────────────────────────────────────────────────── */
+    /* ── Step 2: Tick running FSMs ───────────────────────────────────────── */
 
     /* Precision test runner */
     if (tm->precRunning)
@@ -586,14 +584,12 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
         {
             if (tm->precGoingToFinal)
             {
-                /* Arrived at FINAL — return directly to init (no wrap) */
                 tm->precGoingToFinal = 0;
                 Robot_MoveConstrained(robot, tm->precInitRad,
                                       RBT_MAX_SPEED, RBT_MAX_ACCEL);
             }
             else
             {
-                /* Arrived at INIT — one full round-trip complete */
                 tm->precCurrentRep++;
                 if (tm->precCurrentRep >= tm->precTotalReps)
                 {
@@ -601,7 +597,6 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
                 }
                 else
                 {
-                    /* More reps — go to final again (no wrap) */
                     tm->precGoingToFinal = 1;
                     Robot_MoveConstrained(robot, tm->precFinalRad,
                                           RBT_MAX_SPEED, RBT_MAX_ACCEL);
@@ -612,34 +607,46 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
         return;
     }
 
-    /* Performance test — handle restart request (new params while running) */
+    /* Performance test restart */
     if (tm->perfRestartPending)
     {
-        /* Stop robot here where robot handle is available, then let the
-         * queued TASK_EVT_PERF_TEST dispatch on the next Task_Run call. */
         tm->perfRestartPending = 0;
         Robot_Stop(robot);
         return;
     }
 
-    /* Performance test runner — +360° then back to start, guaranteed vel/accel */
+    /* Performance test runner */
     if (tm->perfRunning)
     {
         if (Robot_IsIdle(robot))
         {
             if (tm->perfGoingToFinal)
             {
-                /* Arrived at 180° — return to 0° */
                 tm->perfGoingToFinal = 0;
                 Robot_PerfTest_Start(robot, 0.0f,
                                      tm->perfVelRad, tm->perfAccelRad);
             }
             else
             {
-                /* Arrived back at 0° — test complete */
                 tm->perfRunning = 0;
             }
         }
+        return;
+    }
+
+    /* Sequence auto-start after homing ─────────────────────────────────────── *
+     * If a START was received during homing, seqPendingAfterHome is set.       *
+     * Once the robot is idle (homing done), kick off the sequence immediately  *
+     * using the latest seqSlotsRad[] and gripperAutoEn without another START.  */
+    if (tm->seqPendingAfterHome && !tm->seqRunning && Robot_IsIdle(robot))
+    {
+        tm->seqPendingAfterHome = 0;
+        tm->seqStep             = 0;
+        tm->grp.seqGripState    = GRP_FSM_IDLE;
+        tm->seqRunning          = 1;
+        /* First slot: use Robot_Move (shortest path / P2P) so the robot goes
+         * directly to the starting position without forcing a direction.       */
+        Robot_Move(robot, tm->seqSlotsRad[0]);
         return;
     }
 
@@ -648,15 +655,14 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
     {
         if (!tm->gripperAutoEn)
         {
-            /* No gripper — just move through slots in order */
             if (Robot_IsIdle(robot))
             {
                 tm->seqStep++;
                 if (tm->seqStep >= tm->seqTotalSteps)
                     tm->seqRunning = 0;
                 else
-                    Robot_MoveConstrained(robot, tm->seqSlotsRad[tm->seqStep],
-                                          RBT_MAX_SPEED, RBT_MAX_ACCEL);
+                    _seq_move_directed(robot, tm->seqSlotsRad[tm->seqStep],
+                                       RBT_MAX_SPEED, RBT_MAX_ACCEL);
             }
         }
         else
@@ -672,10 +678,7 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
     /* ── Step 3: Pop and dispatch the next queued event ─────────────────── */
     if (_queue_empty(tm)) return;
 
-    /* ── Arbitration: Joystick motion preempts queued Modbus motion ──────── *
-     * Scan for a Joystick motion event; if found, skip past Modbus motions.  *
-     * Only look ahead one pass — don't reorder non-motion events.            *
-     * ─────────────────────────────────────────────────────────────────────── */
+    /* ── Arbitration: Joystick motion preempts queued Modbus motion ──────── */
     uint8_t best_idx  = tm->q_head;
     uint8_t found_joy = 0;
     for (uint8_t i = 0; i < tm->q_count; i++)
@@ -695,28 +698,34 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
     TaskEvent_t evt;
     if (found_joy)
     {
-        /* Swap best_idx entry to the head position so _queue_pop gets it */
         TaskEvent_t tmp         = tm->queue[tm->q_head];
         tm->queue[tm->q_head]   = tm->queue[best_idx];
         tm->queue[best_idx]     = tmp;
     }
     evt = _queue_pop(tm);
 
-    /* ── State guard ─────────────────────────────────────────────────────── */
-    if (!_guard_ok(evt.id, robot)) return;
+    if (!_guard_ok(evt.id, robot))
+    {
+        /* When a sequence is rejected during homing, set a pending flag instead
+         * of re-queuing the event.  The flag is checked after homing completes
+         * and the sequence auto-starts using the latest seqSlotsRad[] and
+         * gripperAutoEn — which are always kept up to date by Task_PostFromModbus
+         * on every START press, so a second START simply refreshes the data.    */
+        if (evt.id == TASK_EVT_SEQUENCE)
+            tm->seqPendingAfterHome = 1;
+        return;
+    }
 
-    /* ── Dispatch ────────────────────────────────────────────────────────── */
     tm->activeTask   = evt.id;
     tm->activeSource = evt.source;
     tm->dbg_eventsRun++;
 
     switch (evt.id)
     {
-        /* ── Safety ──────────────────────────────────────────────────── */
         case TASK_EVT_STOP:
-            /* ── 1. Kill all high-level FSMs and queued work immediately ─ */
             tm->seqRunning           = 0;
             tm->seqStep              = 0;
+            tm->seqPendingAfterHome  = 0;
             tm->precRunning          = 0;
             tm->precGoingToFinal     = 0;
             tm->perfRunning          = 0;
@@ -726,26 +735,14 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
             tm->grp.seqGripState     = GRP_FSM_IDLE;
             tm->activeTask           = TASK_EVT_NONE;
             _queue_flush(tm);
-
-            /* ── 2. Soft stop — hold position, robot stays operational ── *
-             * Robot_Stop() stops the trajectory, sets theta_target to the  *
-             * current position (holds in place), resets PID integrals, and *
-             * transitions to ROBOT_IDLE. The next motion command (jog,      *
-             * move, home) is accepted immediately. Motor is NOT cut.        */
             Robot_Stop(robot);
             break;
 
-        /* ── Motion ──────────────────────────────────────────────────── */
         case TASK_EVT_HOME:
             Robot_Home(robot);
             break;
 
         case TASK_EVT_SET_HOME:
-            /* Declare the current physical position as home.
-             * No motor movement — just shift the coordinate frame so that
-             * robot->theta = 0 at the current encoder position.
-             * Uses a brief critical section because home_offset, theta, and
-             * theta_target are floats shared with the TIM3 ISR (Robot_Update). */
             __disable_irq();
             robot->home_offset  = (float)robot->encoder.Rad;
             robot->theta        = 0.0f;
@@ -754,7 +751,8 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
             break;
 
         case TASK_EVT_MOVE:
-            Robot_Move(robot, evt.arg_f);
+            Robot_MoveConstrained(robot, evt.arg_f,
+                                  RBT_MAX_SPEED, RBT_MAX_ACCEL);
             break;
 
         case TASK_EVT_JOG_STEP:
@@ -765,45 +763,36 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
             Robot_JogVel(robot, evt.arg_f);
             break;
 
-        /* ── Sequence ────────────────────────────────────────────────── */
         case TASK_EVT_SEQUENCE:
-            if (tm->seqRunning) break;   /* ignore if already running */
+            if (tm->seqRunning) break;
             tm->seqStep          = 0;
             tm->grp.seqGripState = GRP_FSM_IDLE;
             tm->seqRunning       = 1;
             tm->gripperAutoEn    = evt.arg_u8;
-            /* Use MoveConstrained (no shortest-path wrap) so the robot always
-             * travels directly to each slot in absolute position order.       */
-            Robot_MoveConstrained(robot, tm->seqSlotsRad[0],
-                                  RBT_MAX_SPEED, RBT_MAX_ACCEL);
+            /* First slot: Robot_Move (shortest path / P2P) to get to the
+             * starting position directly. Subsequent slots use
+             * _seq_move_directed to enforce the BaseSystem-commanded direction. */
+            Robot_Move(robot, tm->seqSlotsRad[0]);
             break;
 
-        /* ── Precision test ──────────────────────────────────────────── */
         case TASK_EVT_PREC_TEST:
-            /* Guard: ignore if already running or no reps configured */
             if (tm->precRunning)         break;
             if (tm->precTotalReps == 0)  break;
             tm->precCurrentRep   = 0;
-            tm->precGoingToFinal = 1;   /* first leg: init → final */
+            tm->precGoingToFinal = 1;
             tm->precRunning      = 1;
-            /* Use MoveConstrained (no shortest-path wrap) so the robot
-             * always travels the intended direct path, e.g. 0°→180° and
-             * 180°→0° rather than wrapping to 180°→360°.               */
             Robot_MoveConstrained(robot, tm->precFinalRad,
                                   RBT_MAX_SPEED, RBT_MAX_ACCEL);
             break;
 
-        /* ── Performance test ────────────────────────────────────────── */
         case TASK_EVT_PERF_TEST:
             if (tm->perfRunning) break;
             tm->perfGoingToFinal = 1;
             tm->perfRunning      = 1;
-            /* First leg: 0° → 180°, guaranteed to reach v_target */
             Robot_PerfTest_Start(robot, 3.14159265359f,
                                  tm->perfVelRad, tm->perfAccelRad);
             break;
 
-        /* ── Gripper ─────────────────────────────────────────────────── */
         case TASK_EVT_GRIPPER_MANUAL:
             switch (evt.arg_u8)
             {
@@ -816,10 +805,9 @@ void Task_Run(TaskManager_t *tm, Robot_t *robot)
             break;
 
         case TASK_EVT_GRIPPER_SEQ:
-            /* Only arm if standalone FSM is idle */
             if (tm->grp.grpState == GRP_FSM_IDLE)
             {
-                tm->grp.grpCmd   = evt.arg_u8;   /* 1=Pick, 2=Place */
+                tm->grp.grpCmd   = evt.arg_u8;
                 tm->grp.grpTimer = HAL_GetTick();
                 if (tm->grp.grpCmd == 1)
                 {

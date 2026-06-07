@@ -201,17 +201,27 @@ void Robot_MoveConstrained(Robot_t *robot, float target_rad,
     if (omega_max <= 0.0f || omega_max > RBT_MAX_SPEED)  omega_max = RBT_MAX_SPEED;
     if (alpha_max <= 0.0f || alpha_max > RBT_MAX_ACCEL)  alpha_max = RBT_MAX_ACCEL;
 
-    float saved_omega = robot->scurve.omega_max;
-    float saved_alpha = robot->scurve.alpha_max;
-    robot->scurve.omega_max = omega_max;
-    robot->scurve.alpha_max = alpha_max;
+    if (TRAJ_MODE == TRAJ_MODE_TRAPEZOID)
+    {
+        /* Trapezoidal path — reuse Robot_PerfTest_Start which already sets
+         * ROBOT_PERF_TEST state and handles the cruise-phase guarantee.     */
+        Robot_PerfTest_Start(robot, target_rad, omega_max, alpha_max);
+    }
+    else
+    {
+        /* S-curve path (default) */
+        float saved_omega = robot->scurve.omega_max;
+        float saved_alpha = robot->scurve.alpha_max;
+        robot->scurve.omega_max = omega_max;
+        robot->scurve.alpha_max = alpha_max;
 
-    SCurve_SetTarget(&robot->scurve, robot->theta, target_rad);
-    uint32_t timeout = (uint32_t)(robot->scurve.T_f * 1000.0f) + 2000;
-    set_state(robot, ROBOT_MOVE, timeout);
+        SCurve_SetTarget(&robot->scurve, robot->theta, target_rad);
+        uint32_t timeout = (uint32_t)(robot->scurve.T_f * 1000.0f) + 2000;
+        set_state(robot, ROBOT_MOVE, timeout);
 
-    robot->scurve.omega_max = saved_omega;
-    robot->scurve.alpha_max = saved_alpha;
+        robot->scurve.omega_max = saved_omega;
+        robot->scurve.alpha_max = saved_alpha;
+    }
 }
 
 /* ── Performance test ────────────────────────────────────────────────────── */
@@ -293,9 +303,18 @@ void Robot_JogVel(Robot_t *robot, float speed_rad_s)
 void Robot_JogStep(Robot_t *robot, float step_rad)
 {
     float target = robot->theta + step_rad;
-    SCurve_SetTarget(&robot->scurve, robot->theta, target);
-    uint32_t timeout = (uint32_t)(robot->scurve.T_f * 1000.0f) + 2000;
-    set_state(robot, ROBOT_JOG_STEP, timeout);
+
+    if (TRAJ_MODE == TRAJ_MODE_TRAPEZOID)
+    {
+        /* Trapezoid path: reuse ROBOT_PERF_TEST state (drives robot->trap) */
+        Robot_PerfTest_Start(robot, target, RBT_MAX_SPEED, RBT_MAX_ACCEL);
+    }
+    else
+    {
+        SCurve_SetTarget(&robot->scurve, robot->theta, target);
+        uint32_t timeout = (uint32_t)(robot->scurve.T_f * 1000.0f) + 2000;
+        set_state(robot, ROBOT_JOG_STEP, timeout);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

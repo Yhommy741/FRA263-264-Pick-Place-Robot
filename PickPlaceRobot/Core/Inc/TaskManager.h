@@ -121,6 +121,11 @@ typedef struct {
     uint16_t seqTotalSteps;
     float    seqSlotsRad[16];
     uint8_t  gripperAutoEn;
+    /* seqPendingAfterHome: set when a TASK_EVT_SEQUENCE is rejected during
+     * homing. Task_Run auto-starts the sequence (using latest seqSlotsRad[]
+     * and gripperAutoEn) the moment homing completes, without requiring a
+     * second START press from the BaseSystem.                               */
+    uint8_t  seqPendingAfterHome;
 
     /* ── Precision test runner state ───────────────────────────────────── */
     uint8_t  precRunning;
